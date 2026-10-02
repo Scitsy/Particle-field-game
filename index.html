@@ -13,13 +13,14 @@
     --text: #dfe8ff;
     --dim: #8b98bf;
     --accent: #6fe3ff;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
     font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-user-select: none; user-select: none; }
   canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; cursor: crosshair; }
 
-  #hint { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); padding: 7px 14px; border-radius: 999px;
+  #hint { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); padding: 7px 14px; border-radius: 999px;
     background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     color: var(--dim); white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; pointer-events: none;
     transition: opacity .4s; }
@@ -30,7 +31,7 @@
     background: rgba(10, 14, 30, .8); border: 1px solid var(--line); font-size: 14px; opacity: 0; pointer-events: none;
     transition: opacity .35s; text-align: center; max-width: calc(100vw - 32px); }
 
-  #bar { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; flex-wrap: wrap; gap: 6px;
+  #bar { position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: flex; flex-wrap: wrap; gap: 6px;
     justify-content: center; align-items: center; max-width: calc(100vw - 24px); }
   .grp { display: flex; gap: 3px; padding: 4px; border-radius: 12px; background: var(--glass); border: 1px solid var(--line);
     backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); align-items: center; }
