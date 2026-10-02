@@ -18,6 +18,7 @@ needs `https://` or `localhost`, e.g. `npx http-server`.)
 | **Scenes** | Double slit (with "Peek at slits" to destroy the pattern), tunneling, harmonic trap (a Schrödinger's-cat state), stadium billiard, entangled pair. |
 | **Spin** | Throws vortex waves that carry angular momentum. Phase view shows them as rainbow spirals. |
 | **Forces** | Makes different-colored particles push each other away or pull each other in. |
+| **Auto** | Repeats your last throw of the selected color, from the same spot and direction, each time that particle fades away or leaves the screen. |
 | **Energy** | Shows each particle's energy and spin. In the trap it shows the allowed energy levels, and **Measure energy** freezes the particle into one of them. |
 | **Entangled pair** | Two particles on two wires sharing one wavefunction. Finding one changes the other. |
 | **Share** | Gives a code (or link) that rebuilds your scene, walls and thrown waves. |

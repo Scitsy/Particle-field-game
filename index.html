@@ -93,6 +93,7 @@
   <div class="grp">
     <button id="spinBtn" title="Throw waves that spin: vortices carrying angular momentum (V)">Spin: off</button>
     <button id="forceBtn" title="Let different-colored particles push or pull on each other (G)">Forces: off</button>
+    <button id="repeatBtn" title="When the selected particle fades away or leaves the screen, throw your last wave of that color again (A)">Auto</button>
   </div>
   <div class="grp">
     <button data-tool="play" class="on" title="Drag: launch a wave · Click: look · Hold: keep looking">Play</button>
@@ -115,7 +116,7 @@
   </div>
   <div class="grp" id="expGrp">
     <button id="fireBtn" title="Send one particle (F)">Fire</button>
-    <button id="autoBtn" title="Keep firing, one particle at a time">Auto</button>
+    <button id="autoBtn" title="Keep firing, one particle at a time">Auto-fire</button>
     <button id="moreBtn" title="Repeat the identical experiment 100 more times, instantly">+100</button>
     <button id="peekBtn" title="Put a detector at the slits to see which one the particle went through">Peek at slits</button>
     <button id="energyBtn" title="Measure the energy of every particle in the trap">Measure energy</button>
@@ -164,6 +165,8 @@
       through <i>both</i> slits. Now press <b>Peek at slits</b>: knowing which slit it used makes the stripes vanish.</li>
     <li><b>Spin</b> throws waves that swirl: little whirlpools with a hole in the middle. Turn on <b>Phase</b> to see the rainbow spiral.</li>
     <li><b>Forces</b> makes different colors push each other away or pull each other in.</li>
+    <li><b>Auto</b> repeats your last throw of the selected color, from the same spot in the same direction, each time
+      that particle fades away or leaves the screen.</li>
     <li><b>Energy</b> shows how much energy each particle has: the bright part is motion, the dim part is height (potential).
       In the <b>Harmonic trap</b> only whole steps of energy are allowed. Press <b>Measure energy</b> and the particle picks one step
       and freezes into a pattern that never moves again.</li>
@@ -210,7 +213,7 @@
   <p><span class="k">Space</span> observe · <span class="k">1</span><span class="k">2</span><span class="k">3</span> particle ·
     <span class="k">W</span> walls · <span class="k">E</span> erase · <span class="k">Q</span> play · <span class="k">F</span> fire ·
     <span class="k">P</span> phase · <span class="k">M</span> mic · <span class="k">S</span> sound · <span class="k">K</span> pause ·
-    <span class="k">V</span> spin · <span class="k">G</span> forces · <span class="k">N</span> energy ·
+    <span class="k">V</span> spin · <span class="k">G</span> forces · <span class="k">N</span> energy · <span class="k">A</span> auto ·
     <span class="k">C</span> clear · <span class="k">H</span> help</p>
 </div></div>
 
@@ -753,7 +756,7 @@ const sceneWalls = new Float64Array(N);
 function setScene(name, restore = null) {
   scene = name;
   for (const p of particles) p.clear();
-  waveLog.length = 0; pair.active = false; herm = null;
+  waveLog.length = 0; pair.active = false; herm = null; lastThrow.fill(null);
   Vbase.fill(0); Vwall.fill(0);
   marks.length = 0; rings.length = 0;
   exp.mode = null; exp.running = false; exp.auto = false; exp.queue.length = 0;
@@ -815,7 +818,7 @@ function setScene(name, restore = null) {
     energyBtn: name === 'trap', emitBtn: name === 'pair', collideBtn: name === 'pair' };
   for (const id in show) $('#' + id).style.display = show[id] ? '' : 'none';
   $('#expGrp').style.display = Object.values(show).some(Boolean) ? 'flex' : 'none';
-  for (const id of ['#wallBtn', '#eraseBtn', '#spinBtn', '#forceBtn']) $(id).disabled = name === 'pair';
+  for (const id of ['#wallBtn', '#eraseBtn', '#spinBtn', '#forceBtn', '#repeatBtn']) $(id).disabled = name === 'pair';
   layout();   // the toolbar may have changed height
   syncButtons();
   wallsChanged();
@@ -1498,10 +1501,14 @@ function click(x, y) {
   for (const p of act) found = measureAt(p, x, y, false) || found;
   if (!found) onMiss(x, y);
 }
+// The last wave thrown with each color, for the Auto button.
+const lastThrow = [null, null, null];
+let autoThrow = false, autoWait = 0;
 function launch(x0, y0, x1, y1) {
   let dx = x1 - x0, dy = y1 - y0; const L = Math.hypot(dx, dy) || 1;
   const k = Math.min(K_MAX, 0.25 + L * 0.02);
   if (scene === 'pair') { toast('In this scene, use Emit pair or Collide'); return; }
+  lastThrow[current] = { x: x0, y: y0, kx: k * dx / L, ky: k * dy / L, m: spin };
   addWave(particles[current], x0, y0, k * dx / L, k * dy / L, PACKET_SIGMA, PACKET_SIGMA, spin);
   swoosh(k);
 }
@@ -1694,6 +1701,7 @@ function syncButtons() {
   $('#autoBtn').classList.toggle('on', exp.auto);
   $('#peekBtn').classList.toggle('on', exp.watch);
   $('#meterBtn').classList.toggle('on', showMeter);
+  $('#repeatBtn').classList.toggle('on', autoThrow);
   $('#spinBtn').textContent = SPIN_LABEL[spin]; $('#spinBtn').classList.toggle('on', spin !== 0);
   $('#forceBtn').textContent = FORCE_LABEL[forces]; $('#forceBtn').classList.toggle('on', forces !== 0);
 }
@@ -1730,6 +1738,10 @@ $('#peekBtn').onclick = () => {
 };
 $('#phaseBtn').onclick = () => { phaseView = !phaseView; syncButtons(); };
 $('#meterBtn').onclick = () => { showMeter = !showMeter; syncButtons(); };
+$('#repeatBtn').onclick = () => {
+  autoThrow = !autoThrow; autoWait = 0.4; syncButtons();
+  if (autoThrow && !lastThrow[current]) toast('Auto is on: throw a wave and it will come back each time it fades away');
+};
 $('#spinBtn').onclick = () => { spin = spin === 0 ? 1 : spin === 1 ? -1 : 0; syncButtons(); };
 $('#forceBtn').onclick = () => {
   forces = (forces + 1) % 3; forcesDirty = true; syncButtons();
@@ -1753,6 +1765,7 @@ addEventListener('keydown', e => {
   else if (k === 'w') setTool('wall'); else if (k === 'e') setTool('erase');
   else if (k === 'q' || k === 'escape') { setTool('play'); document.querySelectorAll('.modal').forEach(m => m.classList.remove('show')); }
   else if (k === 'v') $('#spinBtn').click(); else if (k === 'g') $('#forceBtn').click(); else if (k === 'n') $('#meterBtn').click();
+  else if (k === 'a') $('#repeatBtn').click();
   else if (k === 'f') { audioInit(); fire(); } else if (k === 'p') $('#phaseBtn').click();
   else if (k === 'm') toggleMic(); else if (k === 's') $('#soundBtn').click(); else if (k === 'k') $('#pauseBtn').click();
   else if (k === 'c') clearAll(); else if (k === 'h' || k === '?') $('#help').classList.toggle('show');
@@ -1806,12 +1819,11 @@ function frame(now) {
   for (const m of marks) m.t += dt;
   for (const h of exp.hits) h.t += dt;
 
-  // Idle in free space with nothing alive? Throw in something to look at.
-  if (scene === 'free' && !particles.some(p => p.active) && now - lastInput > 9000) {
-    lastInput = now;
-    const a = Math.random() * Math.PI * 2, c = particles[0];
-    addWave(c, LX / 2 - Math.cos(a) * 60, LY / 2 - Math.sin(a) * 30, Math.cos(a) * 0.9, Math.sin(a) * 0.9, PACKET_SIGMA);
-    addWave(c, LX / 2 + Math.cos(a + 0.5) * 60, LY / 2 + Math.sin(a + 0.5) * 30, -Math.cos(a + 0.5) * 0.9, -Math.sin(a + 0.5) * 0.9, PACKET_SIGMA);
+  // Auto: once the selected particle has faded away or left the box, throw its last wave again.
+  if (autoThrow && !paused && scene !== 'pair') {
+    const p = particles[current], L = lastThrow[current];
+    if (p.active || !L) autoWait = 0.4;
+    else if ((autoWait -= dt) <= 0) { addWave(p, L.x, L.y, L.kx, L.ky, PACKET_SIGMA, PACKET_SIGMA, L.m); swoosh(Math.hypot(L.kx, L.ky)); autoWait = 0.4; }
   }
   const tr = performance.now();
   render(now);
