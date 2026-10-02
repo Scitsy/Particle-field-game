@@ -1,0 +1,1238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Quantum Field</title>
+<style>
+  :root {
+    --bg: #04060d;
+    --glass: rgba(18, 24, 44, 0.62);
+    --glass-hi: rgba(40, 52, 90, 0.75);
+    --line: rgba(140, 170, 255, 0.18);
+    --text: #dfe8ff;
+    --dim: #8b98bf;
+    --accent: #6fe3ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-user-select: none; user-select: none; }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; cursor: crosshair; }
+
+  #hint { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); padding: 7px 14px; border-radius: 999px;
+    background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    color: var(--dim); white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+    transition: opacity .4s; }
+  #hint b { color: var(--text); font-weight: 600; }
+  #title { position: fixed; top: 16px; left: 18px; font-weight: 700; letter-spacing: .14em; font-size: 12px; color: var(--accent);
+    text-transform: uppercase; pointer-events: none; opacity: .85; }
+  #toast { position: fixed; top: 58px; left: 50%; transform: translateX(-50%); padding: 8px 16px; border-radius: 10px;
+    background: rgba(10, 14, 30, .8); border: 1px solid var(--line); font-size: 14px; opacity: 0; pointer-events: none;
+    transition: opacity .35s; text-align: center; max-width: calc(100vw - 32px); }
+
+  #bar { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; flex-wrap: wrap; gap: 6px;
+    justify-content: center; align-items: center; max-width: calc(100vw - 24px); }
+  .grp { display: flex; gap: 3px; padding: 4px; border-radius: 12px; background: var(--glass); border: 1px solid var(--line);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); align-items: center; }
+  button, select { font: inherit; color: var(--text); background: transparent; border: 0; border-radius: 8px; padding: 6px 10px;
+    cursor: pointer; white-space: nowrap; }
+  button:hover, select:hover { background: var(--glass-hi); }
+  button.on { background: rgba(111, 227, 255, .18); color: #fff; box-shadow: inset 0 0 0 1px rgba(111, 227, 255, .45); }
+  select { appearance: none; -webkit-appearance: none; padding-right: 22px;
+    background-image: linear-gradient(45deg, transparent 50%, var(--dim) 50%), linear-gradient(135deg, var(--dim) 50%, transparent 50%);
+    background-position: calc(100% - 12px) 55%, calc(100% - 7px) 55%; background-size: 5px 5px; background-repeat: no-repeat; }
+  select option { background: #10162a; }
+  .sw { width: 26px; height: 26px; padding: 0; border-radius: 50%; position: relative; }
+  .sw::after { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: var(--c); box-shadow: 0 0 10px var(--c); }
+  .sw.on { box-shadow: inset 0 0 0 2px var(--c); background: transparent; }
+  #expGrp { display: none; }
+  #micBtn .lvl { display: inline-block; width: 4px; height: 12px; margin-left: 6px; vertical-align: -1px; border-radius: 2px;
+    background: linear-gradient(to top, var(--accent) var(--l, 0%), rgba(255,255,255,.12) var(--l, 0%)); }
+  .primary { color: #fff; background: rgba(111, 227, 255, .12); }
+
+  #help { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(2, 4, 10, .66);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); padding: 16px; z-index: 10; }
+  #help.show { display: flex; }
+  #help .card { max-width: 760px; max-height: calc(100vh - 32px); overflow: auto; background: rgba(12, 17, 34, .96);
+    border: 1px solid var(--line); border-radius: 16px; padding: 22px 26px; font-size: 14px; line-height: 1.55; user-select: text; -webkit-user-select: text; }
+  #help h2 { margin: 0 0 4px; font-size: 20px; }
+  #help h3 { margin: 18px 0 6px; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+  #help ul { margin: 0; padding-left: 20px; }
+  #help li { margin: 4px 0; }
+  #help code { color: #ffd88a; font-size: 13px; }
+  #help .k { display: inline-block; min-width: 20px; padding: 0 5px; border-radius: 4px; border: 1px solid var(--line); text-align: center; font-size: 12px; }
+  #help .close { float: right; }
+  #help p { margin: 6px 0; color: #c4cee8; }
+  @media (max-width: 640px) {
+    #title { display: none; }
+    #hint { top: 10px; font-size: 12px; }
+    button, select { padding: 6px 8px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="title">Quantum Field</div>
+<div id="hint"></div>
+<div id="toast"></div>
+
+<div id="bar">
+  <div class="grp" title="Which particle you are playing with. Waves of the SAME color are one particle and interfere; different colors are different particles.">
+    <button class="sw on" data-p="0" style="--c:#5fe0ff" aria-label="Cyan particle"></button>
+    <button class="sw" data-p="1" style="--c:#ff62c8" aria-label="Magenta particle"></button>
+    <button class="sw" data-p="2" style="--c:#ffcb55" aria-label="Gold particle"></button>
+  </div>
+  <div class="grp">
+    <button data-tool="play" class="on" title="Drag: launch a wave · Click: look · Hold: keep looking">Play</button>
+    <button data-tool="wall" title="Draw walls (W)">Walls</button>
+    <button data-tool="erase" title="Erase walls (E)">Erase</button>
+  </div>
+  <div class="grp">
+    <button id="observeBtn" class="primary" title="Look everywhere at once (Space)">Observe all</button>
+    <button id="clearBtn" title="Remove all particles and marks (C)">Clear</button>
+  </div>
+  <div class="grp">
+    <select id="scene" title="Scene">
+      <option value="free">Free space</option>
+      <option value="slit">Double slit</option>
+      <option value="tunnel">Tunneling</option>
+      <option value="trap">Harmonic trap</option>
+      <option value="stadium">Stadium</option>
+    </select>
+  </div>
+  <div class="grp" id="expGrp">
+    <button id="fireBtn" title="Send one particle (F)">Fire</button>
+    <button id="autoBtn" title="Keep firing, one particle at a time">Auto</button>
+    <button id="moreBtn" title="Repeat the identical experiment 100 more times, instantly">+100</button>
+    <button id="peekBtn" title="Put a detector at the slits to see which one the particle went through">Peek at slits</button>
+  </div>
+  <div class="grp">
+    <button id="phaseBtn" title="Color by quantum phase (P)">Phase</button>
+    <button id="micBtn" title="Let microphone noise disturb the particles (M)">Mic<span class="lvl"></span></button>
+    <button id="soundBtn" class="on" title="Sound effects (S)">Sound</button>
+    <button id="pauseBtn" title="Pause / resume (K)">Pause</button>
+    <button id="helpBtn" title="What is going on? (H)">?</button>
+  </div>
+</div>
+
+<div id="help"><div class="card">
+  <button class="close" id="helpClose">Close ✕</button>
+  <h2>Quantum Field</h2>
+  <p>Every glowing cloud is <b>one particle that hasn't decided where it is yet</b>. Brighter means "more likely to be found here".
+  Nothing is faked: the clouds are a real solution of the Schrödinger equation, running live.</p>
+
+  <h3>Play</h3>
+  <ul>
+    <li><b>Drag</b> to throw a wave. The longer the drag, the faster it goes (and the tighter its ripples).</li>
+    <li>Waves of the <b>same color are the same particle</b>. Where they overlap you get stripes: in the dark stripes the
+      particle's possibilities <i>cancel each other out</i>. Different colors are different particles &mdash; they pass through each other without stripes.</li>
+    <li><b>Click</b> to look. The number by your cursor is the chance you'll find it there. Either it's there &mdash; <i>pop</i>,
+      the whole cloud snaps into a single dot, even the parts far away &mdash; or it isn't, and a hole appears where you looked.</li>
+    <li><b>Hold</b> the mouse down to keep looking. A particle you keep watching can't wander off (the quantum Zeno effect).
+      Move slowly while holding to drag it around with your gaze.</li>
+    <li><b>Observe all</b> (<span class="k">Space</span>) looks everywhere at once.</li>
+    <li><b>Double slit</b>: particles go one at a time and each lands as one dot. But the dots build up stripes &mdash; each particle went
+      through <i>both</i> slits. Now press <b>Peek at slits</b>: knowing which slit it used makes the stripes vanish.</li>
+    <li><b>Mic</b>: noise shakes the clouds (the environment disturbing them). A loud clap collapses everything.</li>
+  </ul>
+
+  <h3>Under the hood</h3>
+  <ul>
+    <li>Solves <code>iħ ∂ψ/∂t = −(ħ²/2m)∇²ψ + V(x,y)ψ</code> on a 256×128 grid (units ħ = m = 1, Δx = 1) using the
+      split-operator Fourier method (Strang splitting): <code>ψ ← e<sup>−iVΔt/2</sup> F<sup>−1</sup> e<sup>−ik²Δt/2</sup> F e<sup>−iVΔt/2</sup> ψ</code>.
+      Exactly unitary, 2nd-order accurate. The FFT is written from scratch in the source.</li>
+    <li>Holding the mouse is continuous watching. The first instant is a real "is it in here?" measurement. After that,
+      looking infinitely often confines the evolution to the watched region: the Hamiltonian becomes <code>PHP + QHQ</code>,
+      which is the same as an invisible wall at the edge of your gaze (quantum Zeno dynamics). Drag slowly and the wall herds the particle along.</li>
+    <li>Brightness is the Born-rule probability <code>|ψ|²</code>. The moving ripples inside a cloud are its phase <code>arg ψ</code>
+      (toggle <b>Phase</b> to color by it).</li>
+    <li>Clicking is a real measurement (a POVM). A detector with sensitivity <code>W(r)</code> fires with probability
+      <code>Σ W|ψ|²</code>. If it fires, the position is pinned down with a Gaussian measurement of width σ:
+      <code>ψ ← e<sup>−|r−r₀|²/4σ²</sup> ψ</code>, renormalized. If it doesn't, <code>ψ ← √(1−W) ψ</code> &mdash; an interaction-free measurement
+      that changes the state without touching the particle.</li>
+    <li>Throwing a wave onto an existing cloud adds it to the superposition: <code>ψ ← ψ/‖ψ‖ + φ</code>, renormalized.
+      Different colors are distinguishable particles with separate wavefunctions, so their densities just add.</li>
+    <li>The screen edges absorb (a smooth damping layer, equivalent to a complex absorbing potential). The double-slit screen records
+      the time-integrated probability flux into the right edge; each run samples one hit from it. Peeking at the slits is a projective
+      measurement of "upper or lower half" just after the slits.</li>
+    <li>Harmonic trap: <code>V = ½ω²r²</code>; a packet with σ = 1/√ω is a coherent state and swings without spreading.
+      Tunneling: a barrier taller than the packet's energy, thin enough to leak through.</li>
+    <li>Mic noise adds a random, moving potential: a crude model of decoherence (dephasing by the environment).</li>
+  </ul>
+  <h3>Keys</h3>
+  <p><span class="k">Space</span> observe · <span class="k">1</span><span class="k">2</span><span class="k">3</span> particle ·
+    <span class="k">W</span> walls · <span class="k">E</span> erase · <span class="k">Q</span> play · <span class="k">F</span> fire ·
+    <span class="k">P</span> phase · <span class="k">M</span> mic · <span class="k">S</span> sound · <span class="k">K</span> pause ·
+    <span class="k">C</span> clear · <span class="k">H</span> help</p>
+</div></div>
+
+<script>
+'use strict';
+/* ============================================================================
+   QUANTUM FIELD — a live 2D Schrödinger-equation sandbox.
+
+   PHYSICS SUMMARY (all of it is real, none of it is decoration)
+   ----------------------------------------------------------------------------
+   • Units: ħ = m = 1. Grid spacing Δx = 1 in x and Δy = DY in y (DY is chosen
+     so the physical domain matches the screen's aspect ratio; ~1.1 on 16:9).
+   • State: each particle has its own complex wavefunction ψ on an NX×NY grid,
+     stored as two Float64Arrays. We normalise so that Σ|ψ|² = probability the
+     particle is still inside the box (absorbing edges let it leave).
+   • Evolution: split-operator Fourier method, one step of size DT:
+         ψ ← P · F⁻¹[ K · F[ P · ψ ] ],  P = exp(−i V DT/2),  K = exp(−i k² DT/2)
+     This is unitary (apart from the absorbing layer) and second-order in DT.
+   • Measurement: see measureAt() — a Gaussian-window detector POVM with
+     proper Born-rule sampling and state update for both outcomes.
+   ============================================================================ */
+
+// ---------------------------------------------------------------- grid setup
+const NX = 256, NY = 128, N = NX * NY;
+const DT = 0.5;                      // time step (ħ/E units)
+const SIM_SPEED = 50;                // simulation time units per real second
+const LX = NX;                       // Δx = 1
+let LY, DY;                          // fixed at load from the screen aspect
+// Screen area available to the field. On portrait screens the toolbar would cover too much, so keep clear of it.
+function viewArea() {
+  const W = innerWidth, H = innerHeight;
+  if (W >= H) return { x: 0, y: 0, w: W, h: H };
+  const top = document.getElementById('bar').getBoundingClientRect().top;
+  return { x: 0, y: 46, w: W, h: Math.max(H * 0.5, top - 52) };
+}
+{
+  const a = viewArea(), r = Math.min(a.w, a.h) / Math.max(a.w, a.h);
+  LY = LX * Math.min(0.75, Math.max(0.5, r));
+  DY = LY / NY;
+}
+const ABS_X = 16, ABS_Y = Math.round(16 / DY); // absorbing layer thickness (cells)
+const WALL_V = 6;                    // wall height, far above typical kinetic energy ~0.7
+const DET_R = 6;                     // detector radius for a click (physical units)
+const ZENO_R = 9;                    // detector radius while holding (bigger = leaks less, see measureAt)
+const COLLAPSE_SIGMA = Math.max(1.6, 1.2 * DY); // position-measurement resolution
+const TRAP_W = 2 * Math.PI / 240;     // harmonic trap frequency: one swing every 240 time units
+const PACKET_SIGMA = 6;              // width of launched packets
+const K_MAX = Math.min(1.6, 0.55 * Math.PI / DY); // stay well below the Nyquist momentum
+
+// ---------------------------------------------------------------- FFT (radix-2, in place)
+function makeFFT(n) {
+  const bits = Math.log2(n) | 0, rev = new Uint32Array(n);
+  for (let i = 0; i < n; i++) { let r = 0; for (let b = 0; b < bits; b++) r |= ((i >> b) & 1) << (bits - 1 - b); rev[i] = r; }
+  const cos = new Float64Array(n / 2), sin = new Float64Array(n / 2);
+  for (let i = 0; i < n / 2; i++) { cos[i] = Math.cos(2 * Math.PI * i / n); sin[i] = Math.sin(2 * Math.PI * i / n); }
+  return { n, rev, cos, sin };
+}
+const FX = makeFFT(NX), FY = makeFFT(NY);
+
+// 1D transform of n elements starting at `off` with spacing `stride`.
+// Forward uses e^{-2πi jk/n}; inverse is unnormalised (normalisation lives in K).
+function fft1(re, im, off, stride, T, inverse) {
+  const n = T.n, rev = T.rev, ct = T.cos, st = T.sin, sg = inverse ? 1 : -1;
+  for (let i = 0; i < n; i++) {
+    const j = rev[i];
+    if (j > i) {
+      const a = off + i * stride, b = off + j * stride;
+      let t = re[a]; re[a] = re[b]; re[b] = t;
+      t = im[a]; im[a] = im[b]; im[b] = t;
+    }
+  }
+  // The first two stages have trivial twiddles (1 and ∓i); doing them by hand saves a lot of loop overhead.
+  for (let i = 0; i < n; i += 4) {
+    const a0 = off + i * stride, a1 = a0 + stride, a2 = a1 + stride, a3 = a2 + stride;
+    const r0 = re[a0] + re[a1], i0 = im[a0] + im[a1], r1 = re[a0] - re[a1], i1 = im[a0] - im[a1];
+    const r2 = re[a2] + re[a3], i2 = im[a2] + im[a3], r3 = re[a2] - re[a3], i3 = im[a2] - im[a3];
+    // multiply (r3, i3) by w = ∓i
+    const t3r = -sg * i3, t3i = sg * r3;
+    re[a0] = r0 + r2; im[a0] = i0 + i2; re[a2] = r0 - r2; im[a2] = i0 - i2;
+    re[a1] = r1 + t3r; im[a1] = i1 + t3i; re[a3] = r1 - t3r; im[a3] = i1 - t3i;
+  }
+  for (let size = 8; size <= n; size <<= 1) {
+    const half = size >> 1, tstep = n / size, hs = half * stride;
+    for (let i = 0; i < n; i += size) {
+      let a = off + i * stride;
+      for (let j = 0, k = 0; j < half; j++, k += tstep, a += stride) {
+        const b = a + hs, wr = ct[k], wi = sg * st[k];
+        const xr = re[b] * wr - im[b] * wi, xi = re[b] * wi + im[b] * wr;
+        re[b] = re[a] - xr; im[b] = im[a] - xi;
+        re[a] += xr; im[a] += xi;
+      }
+    }
+  }
+}
+// Transform along y for all columns at once: each butterfly combines two whole rows,
+// so the inner loop runs over contiguous memory (much kinder to the cache than strided columns).
+function fftCols(re, im, inverse) {
+  const n = NY, rev = FY.rev, ct = FY.cos, st = FY.sin, sg = inverse ? 1 : -1;
+  for (let i = 0; i < n; i++) {
+    const j = rev[i];
+    if (j > i) for (let x = 0, a = i * NX, b = j * NX; x < NX; x++, a++, b++) {
+      let t = re[a]; re[a] = re[b]; re[b] = t;
+      t = im[a]; im[a] = im[b]; im[b] = t;
+    }
+  }
+  for (let size = 2; size <= n; size <<= 1) {
+    const half = size >> 1, tstep = n / size;
+    for (let i = 0; i < n; i += size) {
+      for (let j = 0, k = 0; j < half; j++, k += tstep) {
+        const wr = ct[k], wi = sg * st[k];
+        let a = (i + j) * NX, b = a + half * NX;
+        for (let x = 0; x < NX; x++, a++, b++) {
+          const br = re[b], bi = im[b];
+          const xr = br * wr - bi * wi, xi = br * wi + bi * wr;
+          re[b] = re[a] - xr; im[b] = im[a] - xi;
+          re[a] += xr; im[a] += xi;
+        }
+      }
+    }
+  }
+}
+function fft2(re, im, inverse) {
+  for (let y = 0; y < NY; y++) fft1(re, im, y * NX, 1, FX, inverse);
+  fftCols(re, im, inverse);
+}
+
+// ---------------------------------------------------------------- operators
+// Kinetic propagator in k-space, exp(-i (kx²+ky²)/2 · DT), with the 1/N of the inverse FFT folded in.
+const Kc = new Float64Array(N), Ks = new Float64Array(N);
+for (let j = 0; j < NY; j++) {
+  const ky = 2 * Math.PI * (j < NY / 2 ? j : j - NY) / (NY * DY);
+  for (let i = 0; i < NX; i++) {
+    const kx = 2 * Math.PI * (i < NX / 2 ? i : i - NX) / NX;
+    const ph = -0.5 * (kx * kx + ky * ky) * DT;
+    Kc[j * NX + i] = Math.cos(ph) / N; Ks[j * NX + i] = Math.sin(ph) / N;
+  }
+}
+// Absorbing layer: per-step damping factor near the edges (≈ a complex absorbing potential).
+const mask = new Float64Array(N);
+{
+  const edge = (d, w) => d >= w ? 1 : 1 - 0.13 * ((w - d) / w) ** 2;
+  for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++)
+    mask[j * NX + i] = edge(Math.min(i, NX - 1 - i), ABS_X) * edge(Math.min(j, NY - 1 - j), ABS_Y);
+}
+// Potential = scene background + user-drawn walls + (optional) microphone noise.
+const Vbase = new Float64Array(N), Vwall = new Float64Array(N), Pc = new Float64Array(N), Ps = new Float64Array(N);
+let potentialDirty = true, wallVersion = 0;
+const noiseWaves = Array.from({ length: 6 }, () => {
+  const a = Math.random() * Math.PI * 2, k = 0.08 + Math.random() * 0.14;
+  return { kx: k * Math.cos(a), ky: k * Math.sin(a), w: 0.02 + Math.random() * 0.05, ph: Math.random() * 6.28 };
+});
+let noiseAmp = 0, noiseWasOn = false, simTime = 0;
+
+function rebuildPotential() {
+  const useNoise = noiseAmp > 0.01;
+  for (let j = 0; j < NY; j++) {
+    const y = (j + 0.5) * DY;
+    for (let i = 0; i < NX; i++) {
+      const k = j * NX + i;
+      let V = Vbase[k] + Vwall[k];
+      if (zeno.on) {                     // the Zeno wall: a smooth ring at the detector edge
+        const dx = i + 0.5 - zeno.x, dz = y - zeno.y;
+        const r = Math.sqrt(dx * dx + dz * dz) - ZENO_R - 3;   // just outside the measured disc (r < R + 1)
+        if (r > -5 && r < 5) V += WALL_V * Math.exp(-r * r / 3);
+      }
+      if (useNoise) {
+        let s = 0;
+        for (const w of noiseWaves) s += Math.cos(w.kx * i + w.ky * y - w.w * simTime + w.ph);
+        V += noiseAmp * s * 0.41;
+      }
+      const ph = -V * DT / 2;
+      Pc[k] = Math.cos(ph); Ps[k] = Math.sin(ph);
+    }
+  }
+  noiseWasOn = useNoise;
+  potentialDirty = false;
+}
+
+// ---------------------------------------------------------------- particles
+const COLORS = [[95, 224, 255], [255, 98, 200], [255, 203, 85]];
+class Particle {
+  constructor(idx) {
+    this.idx = idx; this.col = COLORS[idx];
+    this.re = new Float64Array(N); this.im = new Float64Array(N);
+    this.cum = new Float32Array(N);      // running sum of |ψ|², for sampling
+    this.active = false; this.norm = 0;
+    this.mx = 0; this.my = 0; this.spread = 99; this.rightMass = 0;
+    this.track = null;                   // probability-flux bookkeeping for experiments
+  }
+  clear() { this.re.fill(0); this.im.fill(0); this.active = false; this.norm = 0; this.track = null; }
+  sumSq() { let s = 0; const re = this.re, im = this.im; for (let k = 0; k < N; k++) s += re[k] * re[k] + im[k] * im[k]; return s; }
+  scale(f) { const re = this.re, im = this.im; for (let k = 0; k < N; k++) { re[k] *= f; im[k] *= f; } }
+  normalizeTo(target) { const s = this.sumSq(); if (s > 1e-12) this.scale(Math.sqrt(target / s)); this.norm = target; }
+}
+const particles = [new Particle(0), new Particle(1), new Particle(2)];
+let current = 0;
+
+// Gaussian wave packet: |φ|² ∝ exp(-(x-x0)²/2sx² - (y-y0)²/2sy²), momentum (kx, ky).
+function addPacket(p, x0, y0, kx, ky, sx, sy = sx, replace = false) {
+  const re = p.re, im = p.im;
+  if (replace || !p.active) { re.fill(0); im.fill(0); }
+  else { const s = p.sumSq(); if (s > 1e-12) p.scale(1 / Math.sqrt(s)); } // equal weight for old and new
+  let s = 0; const tmpR = scratchR, tmpI = scratchI;
+  for (let j = 0; j < NY; j++) {
+    const y = (j + 0.5) * DY, dy = y - y0;
+    for (let i = 0; i < NX; i++) {
+      const k = j * NX + i, x = i + 0.5, dx = x - x0;
+      const g = Math.exp(-(dx * dx) / (4 * sx * sx) - (dy * dy) / (4 * sy * sy));
+      const ph = kx * dx + ky * dy;
+      tmpR[k] = g * Math.cos(ph); tmpI[k] = g * Math.sin(ph); s += g * g;
+    }
+  }
+  const f = 1 / Math.sqrt(s);
+  for (let k = 0; k < N; k++) { re[k] += tmpR[k] * f; im[k] += tmpI[k] * f; }
+  p.active = true;
+  p.normalizeTo(1);
+}
+const scratchR = new Float64Array(N), scratchI = new Float64Array(N);
+
+// One split-operator step.
+function step(p) {
+  const re = p.re, im = p.im;
+  for (let k = 0; k < N; k++) {
+    const a = re[k], b = im[k], c = Pc[k], s = Ps[k];
+    re[k] = a * c - b * s; im[k] = a * s + b * c;
+  }
+  fft2(re, im, false);
+  for (let k = 0; k < N; k++) {
+    const a = re[k], b = im[k], c = Kc[k], s = Ks[k];
+    re[k] = a * c - b * s; im[k] = a * s + b * c;
+  }
+  fft2(re, im, true);
+  const tr = p.track;
+  for (let k = 0; k < N; k++) {
+    const a = re[k], b = im[k], c = Pc[k], s = Ps[k], m = mask[k];
+    const ar = a * c - b * s, br = a * s + b * c;
+    if (tr !== null && m < 1) {            // probability absorbed by the edge this step
+      const lost = (ar * ar + br * br) * (1 - m * m), i = k % NX;
+      if (i >= NX / 2) { tr.lostR += lost; if (i >= NX - ABS_X) tr.A[(k / NX) | 0] += lost; }
+      else tr.lostL += lost;
+    }
+    re[k] = ar * m; im[k] = br * m;
+  }
+}
+
+// ---------------------------------------------------------------- measurement
+// Detector sensitivity: a soft disc of radius R (flat top, smooth edge).
+const detW = (r2, R) => Math.exp(-0.5 * (r2 / (R * R)) ** 2);
+// Near-projective version for repeated looks: 1 inside, 0 outside, with a 2-unit smooth rim.
+// (A projector repeated instantly always gives the same answer; a soft POVM does not, and would leak.)
+const detSharp = (r2, R) => { const r = Math.sqrt(r2); return r < R - 1 ? 1 : r > R + 1 ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * (r - R + 1) / 2); };
+
+// Sample a cell index from weights w[k] given by fn(k) over the bounding box.
+function sampleBox(i0, i1, j0, j1, fn, total) {
+  let u = Math.random() * total, lastK = -1;
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+    const k = j * NX + i, w = fn(k, i, j);
+    if (w > 0) { lastK = k; u -= w; if (u <= 0) return k; }
+  }
+  return lastK;   // only reached through floating-point round-off
+}
+function boxAround(cx, cy, R) {
+  return [Math.max(0, Math.floor(cx - 2 * R)), Math.min(NX - 1, Math.ceil(cx + 2 * R)),
+          Math.max(0, Math.floor(cy / DY - 2 * R / DY)), Math.min(NY - 1, Math.ceil(cy / DY + 2 * R / DY))];
+}
+function probAt(p, cx, cy, R = DET_R, wf = detW) {
+  const [i0, i1, j0, j1] = boxAround(cx, cy, R); let P = 0;
+  for (let j = j0; j <= j1; j++) { const dy = (j + 0.5) * DY - cy;
+    for (let i = i0; i <= i1; i++) { const k = j * NX + i, dx = i + 0.5 - cx;
+      P += wf(dx * dx + dy * dy, R) * (p.re[k] * p.re[k] + p.im[k] * p.im[k]); } }
+  return P;
+}
+// Gaussian position measurement centred at (x, y): ψ ← exp(-|r-r0|²/4σ²) ψ, renormalised to 1.
+// Keeps the local phase, so the particle keeps whatever momentum it had there.
+function collapse(p, x, y) {
+  const s4 = 4 * COLLAPSE_SIGMA * COLLAPSE_SIGMA, re = p.re, im = p.im;
+  for (let j = 0; j < NY; j++) { const dy = (j + 0.5) * DY - y;
+    for (let i = 0; i < NX; i++) { const k = j * NX + i, dx = i + 0.5 - x;
+      const g = Math.exp(-(dx * dx + dy * dy) / s4); re[k] *= g; im[k] *= g; } }
+  if (p.sumSq() < 1e-14) { addPacket(p, x, y, 0, 0, COLLAPSE_SIGMA, COLLAPSE_SIGMA, true); return; }
+  p.normalizeTo(1);
+  p.mx = x; p.my = y; p.spread = COLLAPSE_SIGMA * Math.SQRT2;
+}
+// Detector POVM at (cx, cy):  P(click) = Σ W|ψ|².
+//   click    → pinpoint: sample r0 from W|ψ|², collapse onto it (a sharp position measurement), or
+//              region (used while holding): ψ ← √W ψ, i.e. we only learn "it's inside the detector".
+//              Region measurements kick the momentum far less (~1/R instead of ~1/σ), which is what lets
+//              rapid repeated looks freeze the particle in place: the quantum Zeno effect.
+//   no click → ψ ← √(1−W) ψ, rescaled to the conditional probability of still being in the box.
+function measureAt(p, cx, cy, region) {
+  const wf = region ? detSharp : detW, R = region ? ZENO_R : DET_R;
+  const s = p.sumSq(), Pyes = probAt(p, cx, cy, R, wf);
+  const [i0, i1, j0, j1] = boxAround(cx, cy, R), re = p.re, im = p.im;
+  const click = Math.random() < Pyes;
+  if (click && region) {
+    for (let j = 0; j < NY; j++) { const dy = (j + 0.5) * DY - cy, inY = j >= j0 && j <= j1;
+      for (let i = 0; i < NX; i++) { const k = j * NX + i;
+        if (!inY || i < i0 || i > i1) { re[k] = 0; im[k] = 0; continue; }
+        const dx = i + 0.5 - cx, f = Math.sqrt(wf(dx * dx + dy * dy, R)); re[k] *= f; im[k] *= f; } }
+    p.normalizeTo(1);
+    onDetect(p, cx, cy, true);
+    return true;
+  }
+  if (click) {
+    const k = sampleBox(i0, i1, j0, j1, (k, i, j) => {
+      const dx = i + 0.5 - cx, dy = (j + 0.5) * DY - cy;
+      return detW(dx * dx + dy * dy, DET_R) * (re[k] * re[k] + im[k] * im[k]);
+    }, Pyes);
+    const x = (k % NX) + Math.random(), y = (((k / NX) | 0) + Math.random()) * DY;
+    collapse(p, x, y);
+    onDetect(p, x, y, false);
+    return true;
+  }
+  for (let j = j0; j <= j1; j++) { const dy = (j + 0.5) * DY - cy;
+    for (let i = i0; i <= i1; i++) { const k = j * NX + i, dx = i + 0.5 - cx;
+      const f = Math.sqrt(Math.max(0, 1 - wf(dx * dx + dy * dy, R))); re[k] *= f; im[k] *= f; } }
+  const target = (s - Pyes) / (1 - Pyes);
+  if (target < 0.015) p.clear(); else p.normalizeTo(target);
+  return false;
+}
+// Look everywhere: with probability Σ|ψ|² the particle is in the box; find it by the Born rule.
+function observeParticle(p) {
+  if (!p.active) return;
+  const s = p.sumSq(), re = p.re, im = p.im;
+  if (Math.random() >= s) { toast('One particle had already slipped out of the box'); p.clear(); return; }
+  const k = sampleBox(0, NX - 1, 0, NY - 1, k => re[k] * re[k] + im[k] * im[k], s);
+  if (k < 0) return;
+  const x = (k % NX) + Math.random(), y = (((k / NX) | 0) + Math.random()) * DY;
+  collapse(p, x, y); onDetect(p, x, y, false);
+}
+function observeAll() {
+  let any = false;
+  for (const p of particles) if (p.active) { observeParticle(p); any = true; }
+  if (!any) toast('Nothing to observe. Drag to throw a wave!');
+}
+
+// ---------------------------------------------------------------- effects & feedback
+const rings = [];   // expanding circles
+const marks = [];   // where particles were found
+let slowmo = 0;     // dramatic slow motion after a collapse
+function onDetect(p, x, y, quiet) {
+  if (!quiet || Math.random() < 0.2) rings.push({ x, y, t: 0, col: p.col, kind: quiet ? 'zeno' : 'hit' });
+  if (!quiet) {
+    marks.push({ x, y, col: p.col, t: 0 }); if (marks.length > 300) marks.shift();
+    slowmo = 1;
+    note(y, 0.32, 1.6); note(y, 0.12, 2.2, 2);
+  }
+}
+function onMiss(x, y) { rings.push({ x, y, t: 0, col: [160, 170, 200], kind: 'miss' }); thud(); }
+
+// ---------------------------------------------------------------- scenes & experiments
+const exp = { mode: null, running: false, auto: false, wait: 0, t: 0, watch: false, watched: false,
+  hits: [], hist: new Float64Array(NY / 2), pred: [null, null], predVer: [-1, -1], queue: [],
+  Xb: 0, thick: 3, slitY: [], slitW: 5, x0: 0, k: 1.15, tPass: 0, tWatch: 0, splitX: NX / 2, readout: null };
+let scene = 'free';
+
+function setWallRect(x0, x1, y0, y1, V) {
+  for (let j = 0; j < NY; j++) { const y = (j + 0.5) * DY; if (y < y0 || y > y1) continue;
+    for (let i = Math.max(0, Math.floor(x0)); i <= Math.min(NX - 1, Math.ceil(x1)); i++) if (i + 0.5 >= x0 && i + 0.5 <= x1) Vwall[j * NX + i] = V; }
+}
+function wallsChanged() { potentialDirty = true; wallVersion++; wallImgDirty = true; }
+
+function setScene(name) {
+  scene = name;
+  for (const p of particles) p.clear();
+  Vbase.fill(0); Vwall.fill(0);
+  marks.length = 0; rings.length = 0;
+  exp.mode = null; exp.running = false; exp.auto = false; exp.queue.length = 0;
+  exp.hits.length = 0; exp.hist.fill(0); exp.pred = [null, null]; exp.watch = false; exp.readout = null;
+  const cx = LX / 2, cy = LY / 2;
+  if (name === 'free') {
+    addPacket(particles[0], LX * 0.3, LY * 0.42, 0.95, 0.12, PACKET_SIGMA);
+    addPacket(particles[0], LX * 0.7, LY * 0.58, -0.95, -0.12, PACKET_SIGMA);
+  } else if (name === 'slit') {
+    exp.mode = 'slit'; exp.Xb = Math.round(LX * 0.38); exp.thick = 3; exp.slitW = 5;
+    const d = Math.max(22, LY * 0.17);
+    exp.slitY = [cy - d / 2, cy + d / 2];
+    setWallRect(exp.Xb, exp.Xb + exp.thick, -1, LY + 1, WALL_V);
+    for (const sy of exp.slitY) setWallRect(exp.Xb - 1, exp.Xb + exp.thick + 1, sy - exp.slitW / 2, sy + exp.slitW / 2, 0);
+    exp.x0 = LX * 0.13; exp.k = 1.15; exp.splitX = exp.Xb + exp.thick;
+    exp.tPass = (exp.Xb - exp.x0) / exp.k + 40;
+    exp.tWatch = (exp.Xb + exp.thick + 8 - exp.x0) / exp.k + 2.2 * PACKET_SIGMA / exp.k;
+    exp.auto = true; exp.wait = 0.6;
+  } else if (name === 'tunnel') {
+    exp.mode = 'tunnel'; exp.Xb = Math.round(LX * 0.5); exp.thick = 2; exp.splitX = exp.Xb + 1;
+    setWallRect(exp.Xb, exp.Xb + exp.thick, -1, LY + 1, 0.9);
+    exp.x0 = LX * 0.22; exp.k = 1.2; exp.wait = 0.3; exp.auto = false;
+    fire();
+  } else if (name === 'trap') {
+    const w = TRAP_W;
+    for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+      const dx = i + 0.5 - cx, dy = (j + 0.5) * DY - cy;
+      Vbase[j * NX + i] = 0.5 * w * w * (dx * dx + dy * dy);
+    }
+    // Schrödinger's cat: one particle, two coherent states on opposite sides, released from rest.
+    const sc = 1 / Math.sqrt(w);
+    addPacket(particles[0], cx - LX * 0.24, cy, 0, 0, sc);
+    addPacket(particles[0], cx + LX * 0.24, cy, 0, 0, sc);
+    addPacket(particles[1], cx, cy - LY * 0.3, 0.6, 0, sc);
+  } else if (name === 'stadium') {
+    const a = LX * 0.17, r = LY * 0.36, t = 3;
+    for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+      const x = i + 0.5, y = (j + 0.5) * DY;
+      const qx = Math.max(-a, Math.min(a, x - cx)), d = Math.hypot(x - cx - qx, y - cy);
+      if (d > r && d < r + t) Vwall[j * NX + i] = WALL_V;
+    }
+    addPacket(particles[0], cx - a * 0.5, cy + r * 0.2, 0.9, 0.55, PACKET_SIGMA);
+  }
+  $('#scene').value = name;
+  $('#expGrp').style.display = exp.mode ? 'flex' : 'none';
+  for (const id of ['#autoBtn', '#moreBtn', '#peekBtn']) $(id).style.display = exp.mode === 'slit' ? '' : 'none';
+  layout();   // the toolbar may have changed height
+  syncButtons();
+  wallsChanged();
+  updateHint();
+}
+
+function fire() {
+  if (!exp.mode) return;
+  const p = particles[0];
+  if (exp.mode === 'slit') addPacket(p, exp.x0, LY / 2, exp.k, 0, PACKET_SIGMA, Math.max(14, LY * 0.11), true);
+  else addPacket(p, exp.x0, LY / 2, exp.k, 0, 7, Math.max(14, LY * 0.12), true);
+  p.track = { A: new Float64Array(NY), lostL: 0, lostR: 0, ver: wallVersion, watch: exp.watch };
+  exp.running = true; exp.t = 0; exp.watched = false;
+  swoosh(0.08);
+}
+
+// Which-path measurement: is the particle past the slits in the upper half, the lower half, or not through at all?
+function whichPath() {
+  const p = particles[0]; exp.watched = true; if (!p.active) return;
+  const re = p.re, im = p.im, mid = LY / 2, xc = exp.splitX;
+  let up = 0, down = 0, tot = 0;
+  for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+    const k = j * NX + i, d = re[k] * re[k] + im[k] * im[k]; tot += d;
+    if (i + 0.5 > xc) { if ((j + 0.5) * DY < mid) up += d; else down += d; }
+  }
+  const u = Math.random() * tot;
+  const outcome = u < up ? 0 : u < up + down ? 1 : 2;
+  for (let j = 0; j < NY; j++) {
+    const y = (j + 0.5) * DY;
+    for (let i = 0; i < NX; i++) {
+      const k = j * NX + i, past = i + 0.5 > xc;
+      const keep = outcome === 2 ? !past : past && ((y < mid) === (outcome === 0));
+      if (!keep) { re[k] = 0; im[k] = 0; }
+    }
+  }
+  if (outcome < 2) {
+    const sy = exp.slitY[outcome];
+    rings.push({ x: xc + 4, y: sy, t: 0, col: [255, 255, 255], kind: 'peek' });
+    note(sy, 0.12, 0.8, 3);
+  }
+  if (p.sumSq() < 1e-10) p.clear(); else p.normalizeTo(1);
+}
+
+function finishSlitRun() {
+  const p = particles[0], tr = p.track;
+  exp.running = false; exp.wait = 0.25;
+  if (!tr) return;
+  let tot = 0; for (let j = 0; j < NY; j++) tot += tr.A[j];
+  // Every run is prepared identically, so this flux profile *is* the hit distribution for this setup.
+  if (tr.ver === wallVersion && tot > 0.01) { const w = tr.watch ? 1 : 0; exp.pred[w] = Float64Array.from(tr.A, a => a / tot); exp.predVer[w] = wallVersion; }
+  if (Math.random() < tot) {
+    let u = Math.random() * tot, j = 0;
+    for (; j < NY - 1; j++) { u -= tr.A[j]; if (u <= 0) break; }
+    addHit(j, false);
+  } else rings.push({ x: exp.Xb - 4, y: LY / 2, t: 0, col: [120, 130, 160], kind: 'miss' });
+  p.clear();
+}
+function addHit(j, quiet) {
+  const y = (j + Math.random()) * DY, x = LX - ABS_X + 2 + Math.random() * 8;
+  exp.hits.push({ x, y, t: 0 }); exp.hist[Math.min(exp.hist.length - 1, (j / 2) | 0)]++;
+  if (exp.hits.length > 4000) exp.hits.shift();
+  rings.push({ x, y, t: quiet ? 0.5 : 0, col: COLORS[0], kind: 'hit' });
+  if (!quiet || Math.random() < 0.25) note(y, quiet ? 0.05 : 0.14, 0.9);
+}
+function addHundred() {
+  const w = exp.watch ? 1 : 0, A = exp.pred[w];
+  if (!A || exp.predVer[w] !== wallVersion) { toast('Let one particle reach the screen first, so we know the odds for this setup'); if (!exp.running) fire(); return; }
+  for (let n = 0; n < 100; n++) {
+    let u = Math.random(), j = 0;
+    for (; j < NY - 1; j++) { u -= A[j]; if (u <= 0) break; }
+    exp.queue.push({ j, delay: n * 0.022 });
+  }
+  toast('100 more identical particles that reached the screen');
+}
+
+function updateExperiment(dt) {
+  if (exp.queue.length) {
+    for (const q of exp.queue) q.delay -= dt;
+    while (exp.queue.length && exp.queue[0].delay <= 0) addHit(exp.queue.shift().j, true);
+  }
+  if (!exp.mode) return;
+  const p = particles[0];
+  if (exp.mode === 'slit') {
+    if (exp.running) {
+      if (exp.watch && !exp.watched && exp.t >= exp.tWatch) whichPath();
+      if (!p.active || !p.track || p.norm < 0.02 || exp.t > 600 || (exp.t > exp.tPass && p.rightMass < 0.004)) finishSlitRun();
+    } else if (exp.auto) { exp.wait -= dt; if (exp.wait <= 0) fire(); }
+  } else if (exp.mode === 'tunnel' && p.active && p.track) {
+    const right = p.rightMass + p.track.lostR, left = (p.norm - p.rightMass) + p.track.lostL, s = left + right || 1;
+    exp.readout = [left / s, right / s];
+  }
+}
+
+// ---------------------------------------------------------------- canvas & view transform
+const $ = s => document.querySelector(s);
+const cv = $('#c'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1, M = [1, 0, 0, 1, 0, 0], Minv = [1, 0, 0, 1, 0, 0], S = 1;
+const field = document.createElement('canvas'); field.width = NX; field.height = NY;
+const fctx = field.getContext('2d'), fimg = fctx.createImageData(NX, NY);
+const glow = document.createElement('canvas'); glow.width = NX / 4; glow.height = NY / 4;
+const gctx = glow.getContext('2d');
+const wallCv = document.createElement('canvas'); wallCv.width = NX; wallCv.height = NY;
+const wctx = wallCv.getContext('2d'); let wallImgDirty = true;
+const bgCv = document.createElement('canvas'), bgctx = bgCv.getContext('2d');
+
+// M maps physical (x, y) → CSS pixels. In portrait the long physical axis runs up the screen.
+function layout() {
+  DPR = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  const A = viewArea();
+  if (W >= H) {
+    S = Math.min(A.w / LX, A.h / LY);
+    M = [S, 0, 0, S, A.x + (A.w - LX * S) / 2, A.y + (A.h - LY * S) / 2];
+  } else {
+    S = Math.min(A.w / LY, A.h / LX);
+    const ox = A.x + (A.w - LY * S) / 2, oy = A.y + (A.h - LX * S) / 2;
+    M = [0, -S, S, 0, ox, oy + S * LX];
+  }
+  const [a, b, c, d, e, f] = M, det = a * d - b * c;
+  Minv = [d / det, -b / det, -c / det, a / det, (c * f - d * e) / det, (b * e - a * f) / det];
+  drawBackground();
+}
+const toScreen = (x, y) => [M[0] * x + M[2] * y + M[4], M[1] * x + M[3] * y + M[5]];
+const toPhys = (X, Y) => [Minv[0] * X + Minv[2] * Y + Minv[4], Minv[1] * X + Minv[3] * Y + Minv[5]];
+const vecToPhys = (dX, dY) => [Minv[0] * dX + Minv[2] * dY, Minv[1] * dX + Minv[3] * dY];
+// Transform that draws an NX×NY image so that pixel (u, v) lands on physical (u, v·DY).
+function setGridTransform(c) {
+  c.setTransform(DPR * M[0], DPR * M[1], DPR * M[2] * DY, DPR * M[3] * DY, DPR * M[4], DPR * M[5]);
+}
+
+function drawBackground() {
+  bgCv.width = cv.width; bgCv.height = cv.height;
+  const g = bgctx.createRadialGradient(cv.width / 2, cv.height / 2, 0, cv.width / 2, cv.height / 2, Math.hypot(cv.width, cv.height) / 2);
+  g.addColorStop(0, '#0b1124'); g.addColorStop(1, '#03050b');
+  bgctx.fillStyle = g; bgctx.fillRect(0, 0, bgCv.width, bgCv.height);
+  bgctx.save(); bgctx.scale(DPR, DPR);
+  bgctx.strokeStyle = 'rgba(120,150,255,0.045)'; bgctx.lineWidth = 1;
+  bgctx.beginPath();
+  for (let x = 0; x <= LX; x += 16) { const [a, b] = toScreen(x, 0), [c, d] = toScreen(x, LY); bgctx.moveTo(a, b); bgctx.lineTo(c, d); }
+  for (let y = 0; y <= LY; y += 16) { const [a, b] = toScreen(0, y), [c, d] = toScreen(LX, y); bgctx.moveTo(a, b); bgctx.lineTo(c, d); }
+  bgctx.stroke();
+  bgctx.strokeStyle = 'rgba(120,150,255,0.12)';
+  const corners = [toScreen(0, 0), toScreen(LX, 0), toScreen(LX, LY), toScreen(0, LY)];
+  bgctx.beginPath(); corners.forEach(([a, b], i) => i ? bgctx.lineTo(a, b) : bgctx.moveTo(a, b)); bgctx.closePath(); bgctx.stroke();
+  bgctx.restore();
+}
+
+function drawWallImage() {
+  const img = wctx.createImageData(NX, NY), d = img.data;
+  for (let k = 0; k < N; k++) {
+    const V = Vwall[k], o = k * 4;
+    if (V > 0) {
+      const a = 0.32 + 0.5 * Math.min(1, V / WALL_V);
+      const barrier = V < 3;
+      d[o] = barrier ? 255 : 150; d[o + 1] = barrier ? 170 : 175; d[o + 2] = barrier ? 90 : 255; d[o + 3] = a * 255;
+    } else if (Vbase[k] > 0) {            // soft rings every 20 units of radius for the trap
+      const r = Math.sqrt(2 * Vbase[k]) / TRAP_W, dist = Math.abs(r - 20 * Math.round(r / 20));
+      const a = Math.max(0, 1 - dist / 1.6) * (r < 130 ? 20 : 0);
+      if (a > 0) { d[o] = 120; d[o + 1] = 150; d[o + 2] = 255; d[o + 3] = a; }
+    }
+  }
+  wctx.putImageData(img, 0, 0); wallImgDirty = false;
+}
+
+// Phase → color lookup (for the Phase view).
+const HUE = new Uint8Array(256 * 3);
+for (let i = 0; i < 256; i++) {
+  const h = i / 256 * 6, c = 1, x = 1 - Math.abs(h % 2 - 1);
+  const [r, g, b] = h < 1 ? [c, x, 0] : h < 2 ? [x, c, 0] : h < 3 ? [0, c, x] : h < 4 ? [0, x, c] : h < 5 ? [x, 0, c] : [c, 0, x];
+  HUE[i * 3] = 60 + 195 * r; HUE[i * 3 + 1] = 60 + 195 * g; HUE[i * 3 + 2] = 60 + 195 * b;
+}
+let phaseView = false;
+
+// Render |ψ|² into the field image and gather per-particle statistics in the same pass.
+const GAIN = 19;
+function renderField() {
+  const d = fimg.data, act = particles.filter(p => p.active), invDY = 1 / DY;
+  for (const p of act) { p._s = 0; p._x = 0; p._y = 0; p._xx = 0; p._yy = 0; p._r = 0; }
+  const splitX = exp.splitX;
+  for (let j = 0; j < NY; j++) {
+    const y = (j + 0.5) * DY;
+    for (let i = 0; i < NX; i++) {
+      const k = j * NX + i; let r = 0, g = 0, b = 0;
+      for (let q = 0; q < act.length; q++) {
+        const p = act[q], a = p.re[k], c = p.im[k], dd = a * a + c * c;
+        p._s += dd; p.cum[k] = p._s;
+        if (dd < 1e-13) continue;
+        const x = i + 0.5;
+        p._x += dd * x; p._y += dd * y; p._xx += dd * x * x; p._yy += dd * y * y;
+        if (x > splitX) p._r += dd;
+        const amp = Math.sqrt(dd), I = 1 - Math.exp(-Math.sqrt(dd * invDY) * GAIN);
+        if (phaseView) {
+          const h = ((Math.atan2(c, a) / (2 * Math.PI) + 1) % 1 * 256) | 0;
+          r += HUE[h * 3] * I; g += HUE[h * 3 + 1] * I; b += HUE[h * 3 + 2] * I;
+        } else {
+          const m = I * (0.74 + 0.26 * a / amp);           // ripples = Re ψ / |ψ| = cos(phase)
+          const hot = I * I * 70;                           // dense cores glow white
+          r += p.col[0] * m + hot; g += p.col[1] * m + hot; b += p.col[2] * m + hot;
+        }
+      }
+      const o = k * 4; d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255;
+    }
+  }
+  for (const p of act) {
+    const s = p._s; p.norm = s;
+    if (s < 0.015 && !(exp.running && p === particles[0])) { p.clear(); continue; }
+    if (s > 1e-9) {
+      p.mx = p._x / s; p.my = p._y / s;
+      p.spread = Math.sqrt(Math.max(0, p._xx / s - p.mx * p.mx + p._yy / s - p.my * p.my));
+      p.rightMass = p._r;
+    }
+  }
+  fctx.putImageData(fimg, 0, 0);
+}
+
+function render(now) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  ctx.drawImage(bgCv, 0, 0);
+  renderField();
+  if (wallImgDirty) drawWallImage();
+
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  setGridTransform(ctx);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.drawImage(field, 0, 0);
+  // bloom: downsample then stretch back up = cheap blur
+  gctx.globalCompositeOperation = 'copy'; gctx.drawImage(field, 0, 0, glow.width, glow.height);
+  ctx.globalAlpha = 0.75; ctx.drawImage(glow, 0, 0, NX, NY); ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(wallCv, 0, 0);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  ctx.globalCompositeOperation = 'lighter';
+  drawSparkles();
+  drawParticles();
+  drawMarks();
+  if (exp.mode === 'slit') drawScreen();
+  drawRings();
+  ctx.globalCompositeOperation = 'source-over';
+  drawOverlay(now);
+}
+
+// "Possibility dust": fresh random samples from |ψ|² every frame.
+function drawSparkles() {
+  for (const p of particles) {
+    if (!p.active || p.norm < 0.02) continue;
+    const n = Math.round(80 * Math.min(1, p.norm)), cum = p.cum, total = cum[N - 1];
+    const [r, g, b] = p.col;
+    for (let s = 0; s < n; s++) {
+      const u = Math.random() * total; let lo = 0, hi = N - 1;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (cum[mid] < u) lo = mid + 1; else hi = mid; }
+      const [X, Y] = toScreen((lo % NX) + Math.random(), (((lo / NX) | 0) + Math.random()) * DY);
+      const a = 0.25 + Math.random() * 0.6, sz = 1 + Math.random() * 1.4;
+      ctx.fillStyle = `rgba(${(r + 255) >> 1},${(g + 255) >> 1},${(b + 255) >> 1},${a})`;
+      ctx.fillRect(X - sz / 2, Y - sz / 2, sz, sz);
+    }
+  }
+}
+// A freshly measured particle is a tight packet: draw it as a solid bead that melts back into a cloud as it spreads.
+function drawParticles() {
+  for (const p of particles) {
+    if (!p.active) continue;
+    const q = Math.max(0, Math.min(1, 1 - (p.spread - 2.4) / 5.5));
+    if (q <= 0) continue;
+    const [X, Y] = toScreen(p.mx, p.my), [r, g, b] = p.col, R = S * (3 + 6 * (1 - q));
+    const grd = ctx.createRadialGradient(X, Y, 0, X, Y, R * 4);
+    grd.addColorStop(0, `rgba(255,255,255,${q})`);
+    grd.addColorStop(0.18, `rgba(${r},${g},${b},${0.8 * q})`);
+    grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(X, Y, R * 4, 0, 7); ctx.fill();
+  }
+}
+function drawMarks() {
+  for (const m of marks) {
+    const [X, Y] = toScreen(m.x, m.y), a = Math.max(0, 0.55 - m.t / 40);
+    if (a <= 0) continue;
+    ctx.fillStyle = `rgba(${m.col[0]},${m.col[1]},${m.col[2]},${a})`;
+    ctx.beginPath(); ctx.arc(X, Y, 1.8, 0, 7); ctx.fill();
+  }
+  while (marks.length && marks[0].t > 22) marks.shift();
+}
+function drawRings() {
+  for (const g of rings) {
+    const [X, Y] = toScreen(g.x, g.y), [r, gg, b] = g.col;
+    if (g.kind === 'hit') {
+      const R = 4 + g.t * 60, a = Math.max(0, 1 - g.t / 0.9);
+      ctx.strokeStyle = `rgba(${r},${gg},${b},${a})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(X, Y, R, 0, 7); ctx.stroke();
+      ctx.fillStyle = `rgba(255,255,255,${a * 0.9})`; ctx.beginPath(); ctx.arc(X, Y, 3 + 3 * a, 0, 7); ctx.fill();
+    } else if (g.kind === 'zeno') {
+      const a = Math.max(0, 0.6 - g.t * 2);
+      ctx.strokeStyle = `rgba(${r},${gg},${b},${a})`; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(X, Y, 3 + g.t * 30, 0, 7); ctx.stroke();
+    } else if (g.kind === 'peek') {
+      const a = Math.max(0, 1 - g.t / 0.7);
+      ctx.strokeStyle = `rgba(255,255,255,${a})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(X, Y, 6 + g.t * 25, 0, 7); ctx.stroke();
+    } else {
+      const a = Math.max(0, 0.7 - g.t / 0.9), R = DET_R * S * (1 + g.t * 0.6);
+      ctx.strokeStyle = `rgba(${r},${gg},${b},${a})`; ctx.lineWidth = 1.5; ctx.setLineDash([3, 5]);
+      ctx.beginPath(); ctx.arc(X, Y, R, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+}
+function physPath(pts) { ctx.beginPath(); pts.forEach(([x, y], i) => { const [X, Y] = toScreen(x, y); i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); }); }
+
+// Double-slit detection screen: dots, histogram, and the wave's prediction.
+function drawScreen() {
+  const xs = LX - ABS_X, [r, g, b] = COLORS[0];
+  ctx.strokeStyle = 'rgba(150,200,255,0.25)'; ctx.lineWidth = 1;
+  physPath([[xs, 0], [xs, LY]]); ctx.stroke();
+  for (const h of exp.hits) {
+    const [X, Y] = toScreen(h.x, h.y), a = 0.55 + 0.45 * Math.max(0, 1 - h.t);
+    ctx.fillStyle = `rgba(${r},${g},${b},${a})`; ctx.fillRect(X - 1.2, Y - 1.2, 2.4, 2.4);
+  }
+  const nb = exp.hist.length, bh = LY / nb, len = 22;
+  let mx = 0; for (const v of exp.hist) mx = Math.max(mx, v);
+  if (mx > 0) {
+    ctx.fillStyle = `rgba(${r},${g},${b},0.22)`;
+    for (let i = 0; i < nb; i++) if (exp.hist[i]) {
+      const l = exp.hist[i] / mx * len; physPath([[xs - 2, i * bh], [xs - 2 - l, i * bh], [xs - 2 - l, (i + 1) * bh], [xs - 2, (i + 1) * bh]]); ctx.fill();
+    }
+  }
+  const w = exp.watch ? 1 : 0, A = exp.pred[w];
+  if (A && exp.predVer[w] === wallVersion && exp.hits.length > 0) {
+    let am = 0; const bins = new Float64Array(nb);
+    for (let j = 0; j < NY; j++) bins[Math.min(nb - 1, (j / 2) | 0)] += A[j];
+    for (const v of bins) am = Math.max(am, v);
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1.2; ctx.setLineDash([4, 3]);
+    physPath(Array.from(bins, (v, i) => [xs - 2 - v / am * len, (i + 0.5) * bh])); ctx.stroke(); ctx.setLineDash([]);
+  }
+  if (exp.watch) for (const sy of exp.slitY) {
+    const [X, Y] = toScreen(exp.splitX + 4, sy);
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.ellipse(X, Y, 7, 4, 0, 0, 7); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.arc(X, Y, 2, 0, 7); ctx.fill();
+  }
+}
+
+function drawLabel(text, X, Y, col, align = 'center', size = 12) {
+  if (align === 'center') X = Math.max(70, Math.min(W - 70, X));
+  ctx.font = `600 ${size}px system-ui, sans-serif`; ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillText(text, X + 1, Y + 1);
+  ctx.fillStyle = col; ctx.fillText(text, X, Y);
+}
+
+// Cursor detector, drag preview, readouts.
+function drawOverlay(now) {
+  if (pointer.inside && tool === 'play' && (!press || press.mode !== 'launch')) {
+    const watching = zeno.on;
+    const [X, Y] = watching ? toScreen(zeno.x, zeno.y) : toScreen(pointer.x, pointer.y), R = (watching ? ZENO_R : DET_R) * S;
+    ctx.strokeStyle = watching ? 'rgba(255,255,255,0.75)' : 'rgba(200,215,255,0.35)';
+    ctx.lineWidth = watching ? 2 : 1;
+    ctx.beginPath(); ctx.arc(X, Y, R * (watching ? 1 + 0.06 * Math.sin(now / 60) : 1), 0, 7); ctx.stroke();
+    let row = 0;
+    for (const p of particles) {
+      if (!p.active) continue;
+      const P = (watching ? probAt(p, zeno.x, zeno.y, ZENO_R, detSharp) : probAt(p, pointer.x, pointer.y)) * 100;
+      if (P < 0.5 && !watching) continue;
+      drawLabel(P >= 99.5 ? '100%' : P < 1 ? '<1%' : Math.round(P) + '%', X + R + 8, Y - 8 + row * 15,
+        `rgb(${p.col[0]},${p.col[1]},${p.col[2]})`, 'left');
+      row++;
+    }
+  }
+  if (tool !== 'play' && pointer.inside) {
+    const [X, Y] = toScreen(pointer.x, pointer.y);
+    ctx.strokeStyle = tool === 'wall' ? 'rgba(150,175,255,0.7)' : 'rgba(255,140,140,0.7)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(X, Y, (tool === 'wall' ? 2.5 : 7) * S, 0, 7); ctx.stroke();
+  }
+  if (press && press.mode === 'launch') {
+    const [X0, Y0] = toScreen(press.px, press.py), [X1, Y1] = toScreen(pointer.x, pointer.y), [r, g, b] = particles[current].col;
+    const grd = ctx.createRadialGradient(X0, Y0, 0, X0, Y0, PACKET_SIGMA * 2.2 * S);
+    grd.addColorStop(0, `rgba(${r},${g},${b},0.45)`); grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(X0, Y0, PACKET_SIGMA * 2.2 * S, 0, 7); ctx.fill();
+    ctx.strokeStyle = `rgba(${r},${g},${b},0.9)`; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(X0, Y0); ctx.lineTo(X1, Y1); ctx.stroke();
+    const ang = Math.atan2(Y1 - Y0, X1 - X0);
+    ctx.beginPath(); ctx.moveTo(X1, Y1);
+    ctx.lineTo(X1 - 11 * Math.cos(ang - 0.45), Y1 - 11 * Math.sin(ang - 0.45));
+    ctx.lineTo(X1 - 11 * Math.cos(ang + 0.45), Y1 - 11 * Math.sin(ang + 0.45)); ctx.closePath();
+    ctx.fillStyle = `rgba(${r},${g},${b},0.9)`; ctx.fill();
+  }
+  if (exp.mode === 'slit') {
+    const n = exp.hits.length, [X, Y] = toScreen(LX - ABS_X - 12, 6);
+    drawLabel(n ? `${n} particle${n > 1 ? 's' : ''} detected` : 'detector screen', X, Y, 'rgba(200,220,255,0.75)', 'center', 11);
+  }
+  if (exp.mode === 'tunnel' && exp.readout) {
+    const [l, rr] = exp.readout, [X1, Y1] = toScreen(exp.Xb - 30, LY * 0.14), [X2, Y2] = toScreen(exp.Xb + 34, LY * 0.14);
+    drawLabel(`← bounced ${Math.round(l * 100)}%`, X1, Y1, 'rgba(200,220,255,0.85)');
+    drawLabel(`tunneled ${Math.round(rr * 100)}% →`, X2, Y2, 'rgba(255,200,120,0.95)');
+  }
+}
+
+// ---------------------------------------------------------------- input
+let tool = 'play';
+const pointer = { x: 0, y: 0, inside: false, X: 0, Y: 0 };
+let press = null, painting = null, lastInput = performance.now();
+
+function inBox(x, y) { return x >= 0 && x <= LX && y >= 0 && y <= LY; }
+function setPointer(e) {
+  pointer.X = e.clientX; pointer.Y = e.clientY;
+  const [x, y] = toPhys(e.clientX, e.clientY); pointer.x = x; pointer.y = y; pointer.inside = inBox(x, y);
+}
+cv.addEventListener('pointerdown', e => {
+  audioInit(); setPointer(e); lastInput = performance.now();
+  if (!pointer.inside) return;
+  cv.setPointerCapture(e.pointerId);
+  if (tool !== 'play') { painting = { x: pointer.x, y: pointer.y }; paint(pointer.x, pointer.y, pointer.x, pointer.y); return; }
+  press = { X: e.clientX, Y: e.clientY, px: pointer.x, py: pointer.y, t: performance.now(), mode: 'pending', zt: 0 };
+});
+cv.addEventListener('pointermove', e => {
+  setPointer(e);
+  if (painting) { paint(painting.x, painting.y, pointer.x, pointer.y); painting.x = pointer.x; painting.y = pointer.y; lastInput = performance.now(); }
+  if (press && press.mode === 'pending' && Math.hypot(e.clientX - press.X, e.clientY - press.Y) > 9) press.mode = 'launch';
+});
+function endPress(e) {
+  if (painting) { painting = null; return; }
+  if (!press) return;
+  lastInput = performance.now();
+  if (press.mode === 'pending') click(press.px, press.py);
+  else if (press.mode === 'launch') launch(press.px, press.py, pointer.x, pointer.y);
+  press = null;
+  if (e.pointerType !== 'mouse') pointer.inside = false;
+}
+cv.addEventListener('pointerup', endPress);
+cv.addEventListener('pointercancel', () => { press = null; painting = null; });
+cv.addEventListener('pointerleave', e => { if (!press && !painting) pointer.inside = false; });
+cv.addEventListener('contextmenu', e => e.preventDefault());
+
+function click(x, y) {
+  const act = particles.filter(p => p.active);
+  if (!act.length) { onMiss(x, y); toast('Nothing here yet — drag to throw a wave'); return; }
+  let found = false;
+  for (const p of act) found = measureAt(p, x, y, false) || found;
+  if (!found) onMiss(x, y);
+}
+function launch(x0, y0, x1, y1) {
+  let dx = x1 - x0, dy = y1 - y0; const L = Math.hypot(dx, dy) || 1;
+  const k = Math.min(K_MAX, 0.25 + L * 0.02);
+  addPacket(particles[current], x0, y0, k * dx / L, k * dy / L, PACKET_SIGMA);
+  swoosh(k);
+}
+// Holding = watching continuously (quantum Zeno effect).
+// The first moment of the hold is one real Born-rule look: "is it inside the detector?".
+// After that, looking again and again in the limit of infinitely frequent looks restricts the evolution
+// to the watched region: the Hamiltonian becomes P·H·P + Q·H·Q, which is exactly H with a hard wall along
+// the boundary of the region ("quantum Zeno dynamics", Facchi & Pascazio 2002). So while you hold, the edge
+// of your gaze acts as a ring-shaped wall: what's inside stays inside, what's outside can't get in.
+const zeno = { on: false, x: 0, y: 0 };
+function zenoTick(simDt) {
+  if (press && press.mode === 'pending' && performance.now() - press.t > 200) {
+    press.mode = 'zeno'; zeno.x = pointer.x; zeno.y = pointer.y;
+    for (const p of particles) if (p.active) measureAt(p, zeno.x, zeno.y, true);
+  }
+  const on = !!press && press.mode === 'zeno' && pointer.inside;
+  if (on !== zeno.on) { zeno.on = on; potentialDirty = true; }
+  if (!on) return;
+  // glide toward the cursor at a limited speed, so the wall pushes rather than slices
+  const dx = pointer.x - zeno.x, dy = pointer.y - zeno.y, d = Math.hypot(dx, dy), maxMove = 0.7 * simDt;
+  if (d > 1e-3) {
+    if (d > maxMove) { zeno.x += dx * maxMove / d; zeno.y += dy * maxMove / d; } else { zeno.x = pointer.x; zeno.y = pointer.y; }
+    potentialDirty = true;
+  }
+}
+function paint(xa, ya, xb, yb) {
+  const R = tool === 'wall' ? 2.5 : 7, V = tool === 'wall' ? WALL_V : 0;
+  const n = Math.max(1, Math.ceil(Math.hypot(xb - xa, yb - ya) / 1));
+  for (let s = 0; s <= n; s++) {
+    const cx = xa + (xb - xa) * s / n, cy = ya + (yb - ya) * s / n;
+    for (let j = Math.max(0, Math.floor((cy - R) / DY)); j <= Math.min(NY - 1, Math.ceil((cy + R) / DY)); j++)
+      for (let i = Math.max(0, Math.floor(cx - R)); i <= Math.min(NX - 1, Math.ceil(cx + R)); i++) {
+        const ddx = i + 0.5 - cx, ddy = (j + 0.5) * DY - cy;
+        if (ddx * ddx + ddy * ddy <= R * R) Vwall[j * NX + i] = V;
+      }
+  }
+  wallsChanged();
+}
+
+// ---------------------------------------------------------------- audio: synth + microphone
+let AC = null, master = null, soundOn = true;
+function audioInit() {
+  if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+  const A = window.AudioContext || window.webkitAudioContext; if (!A) return;
+  AC = new A(); master = AC.createGain(); master.gain.value = soundOn ? 0.5 : 0;
+  const delay = AC.createDelay(), fb = AC.createGain(), lp = AC.createBiquadFilter();
+  delay.delayTime.value = 0.27; fb.gain.value = 0.32; lp.type = 'lowpass'; lp.frequency.value = 2400;
+  master.connect(AC.destination); master.connect(delay); delay.connect(lp); lp.connect(fb); fb.connect(delay); lp.connect(AC.destination);
+}
+const SCALE = [0, 2, 4, 7, 9];
+function note(y, vol, dur, oct = 0) {   // pentatonic pitch from vertical position
+  if (!AC || !soundOn) return;
+  const idx = Math.max(0, Math.min(14, Math.floor((1 - y / LY) * 15)));
+  const semi = SCALE[idx % 5] + 12 * (Math.floor(idx / 5) + oct);
+  const f = 220 * Math.pow(2, semi / 12), t = AC.currentTime;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = 'sine'; o.frequency.value = f;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
+}
+function swoosh(k) {
+  if (!AC || !soundOn) return;
+  const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+  o.type = 'triangle'; o.frequency.setValueAtTime(180, t); o.frequency.exponentialRampToValueAtTime(260 + 400 * k, t + 0.25);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.06, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.5);
+}
+function thud() {
+  if (!AC || !soundOn) return;
+  const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(70, t + 0.2);
+  g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.35);
+}
+
+let mic = null, micLevel = 0, micAvg = 0.01, clapCool = 0;
+async function toggleMic() {
+  audioInit();
+  if (mic) { mic.stream.getTracks().forEach(t => t.stop()); mic = null; noiseAmp = 0; potentialDirty = true; syncButtons(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false } });
+    const src = AC.createMediaStreamSource(stream), an = AC.createAnalyser(); an.fftSize = 1024; src.connect(an);
+    mic = { stream, an, buf: new Float32Array(an.fftSize) };
+    toast('Mic on: make some noise to shake the clouds. Clap to collapse them!');
+  } catch (err) { toast('Microphone unavailable (it needs permission and https or localhost)'); }
+  syncButtons();
+}
+function updateMic(dt) {
+  if (!mic) return;
+  mic.an.getFloatTimeDomainData(mic.buf);
+  let s = 0; for (const v of mic.buf) s += v * v;
+  const rms = Math.sqrt(s / mic.buf.length);
+  micLevel += (rms - micLevel) * Math.min(1, dt * 12);
+  clapCool -= dt;
+  if (rms > 0.16 && rms > 5 * micAvg && clapCool <= 0) {
+    clapCool = 0.8;
+    if (particles.some(p => p.active)) { observeAll(); toast('The noise "observed" everything!'); }
+  }
+  micAvg += (rms - micAvg) * Math.min(1, dt * 0.8);
+  noiseAmp = Math.min(1.2, Math.max(0, micLevel - 0.012) * 9);
+  $('#micBtn .lvl').style.setProperty('--l', Math.min(100, micLevel * 600) + '%');
+}
+
+// ---------------------------------------------------------------- UI wiring
+let paused = false;
+function syncButtons() {
+  document.querySelectorAll('.sw').forEach(b => b.classList.toggle('on', +b.dataset.p === current));
+  document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === tool));
+  $('#phaseBtn').classList.toggle('on', phaseView);
+  $('#micBtn').classList.toggle('on', !!mic);
+  $('#soundBtn').classList.toggle('on', soundOn);
+  $('#pauseBtn').classList.toggle('on', paused); $('#pauseBtn').textContent = paused ? 'Resume' : 'Pause';
+  $('#autoBtn').classList.toggle('on', exp.auto);
+  $('#peekBtn').classList.toggle('on', exp.watch);
+}
+function setTool(t) { tool = t; syncButtons(); updateHint(); }
+let toastTimer = 0;
+function toast(msg) { const el = $('#toast'); el.textContent = msg; el.style.opacity = 1; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.style.opacity = 0, 2600); }
+function updateHint() {
+  const h = $('#hint');
+  if (tool === 'wall') h.innerHTML = '<b>Draw</b> walls. Waves bounce off them.';
+  else if (tool === 'erase') h.innerHTML = '<b>Drag</b> to erase walls.';
+  else if (scene === 'slit') h.innerHTML = 'One particle at a time… <b>where do they land?</b> Then try <b>Peek at slits</b>.';
+  else if (scene === 'tunnel') h.innerHTML = 'The wall is too high to climb, yet some of the wave <b>leaks through</b>. Press <b>Fire</b>.';
+  else if (scene === 'trap') h.innerHTML = 'A quantum bowl. One cyan particle sits on <b>both sides at once</b>.';
+  else h.innerHTML = '<b>Drag</b> to throw a wave · <b>Click</b> to look · <b>Hold</b> to keep watching';
+}
+document.querySelectorAll('.sw').forEach(b => b.onclick = () => { current = +b.dataset.p; syncButtons(); });
+document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
+$('#observeBtn').onclick = () => { audioInit(); observeAll(); };
+$('#clearBtn').onclick = clearAll;
+function clearAll() {
+  for (const p of particles) p.clear();
+  marks.length = 0; exp.hits.length = 0; exp.hist.fill(0); exp.queue.length = 0; exp.running = false; exp.readout = null;
+}
+$('#scene').onchange = e => { setScene(e.target.value); e.target.blur(); };
+$('#fireBtn').onclick = () => { audioInit(); fire(); };
+$('#autoBtn').onclick = () => { exp.auto = !exp.auto; exp.wait = 0; syncButtons(); };
+$('#moreBtn').onclick = () => { audioInit(); addHundred(); };
+$('#peekBtn').onclick = () => {
+  exp.watch = !exp.watch; exp.hits.length = 0; exp.hist.fill(0); exp.queue.length = 0;
+  toast(exp.watch ? 'Detectors on the slits: now we know which slit each particle used' : 'Detectors off: nobody knows which slit');
+  syncButtons();
+};
+$('#phaseBtn').onclick = () => { phaseView = !phaseView; syncButtons(); };
+$('#micBtn').onclick = toggleMic;
+$('#soundBtn').onclick = () => { soundOn = !soundOn; if (master) master.gain.value = soundOn ? 0.5 : 0; syncButtons(); };
+$('#pauseBtn').onclick = () => { paused = !paused; syncButtons(); };
+$('#helpBtn').onclick = () => $('#help').classList.add('show');
+$('#helpClose').onclick = () => $('#help').classList.remove('show');
+$('#help').onclick = e => { if (e.target.id === 'help') $('#help').classList.remove('show'); };
+document.querySelectorAll('#bar button').forEach(b => b.addEventListener('click', () => b.blur()));
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || e.metaKey || e.ctrlKey) return;
+  const k = e.key.toLowerCase();
+  if (k === ' ') { e.preventDefault(); audioInit(); observeAll(); }
+  else if (k >= '1' && k <= '3') { current = +k - 1; syncButtons(); }
+  else if (k === 'w') setTool('wall'); else if (k === 'e') setTool('erase'); else if (k === 'q' || k === 'escape') { setTool('play'); $('#help').classList.remove('show'); }
+  else if (k === 'f') { audioInit(); fire(); } else if (k === 'p') $('#phaseBtn').click();
+  else if (k === 'm') toggleMic(); else if (k === 's') $('#soundBtn').click(); else if (k === 'k') $('#pauseBtn').click();
+  else if (k === 'c') clearAll(); else if (k === 'h' || k === '?') $('#help').classList.toggle('show');
+});
+addEventListener('resize', layout);
+
+// ---------------------------------------------------------------- main loop
+let last = performance.now(), acc = 0, stepCost = 2;   // ms per particle-step, measured
+const perf = { render: 0, frame: 0 };
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  updateMic(dt);
+  if (noiseAmp > 0.01 || noiseWasOn) potentialDirty = true;
+
+  if (!paused) {
+    slowmo = Math.max(0, slowmo - dt / 1.8);
+    const timeScale = 1 - 0.85 * Math.min(1, slowmo * 1.4);
+    const boost = exp.mode === 'slit' && exp.auto ? 2.6 : 1;
+    acc += dt * SIM_SPEED * timeScale * boost;
+    const act = particles.filter(p => p.active);
+    const budget = Math.max(1, Math.floor(14 / (stepCost * Math.max(1, act.length))));
+    zenoTick(dt * SIM_SPEED * timeScale);
+    let steps = Math.floor(acc / DT);
+    if (steps > budget) { steps = budget; acc = 0; } else acc -= steps * DT;
+    if (potentialDirty) rebuildPotential();
+    if (steps > 0 && act.length) {
+      const t0 = performance.now();
+      for (let s = 0; s < steps; s++) {
+        for (const p of act) step(p);
+        simTime += DT; exp.t += DT;
+        if (exp.watch && exp.running && !exp.watched && exp.t >= exp.tWatch) whichPath();
+      }
+      stepCost = 0.9 * stepCost + 0.1 * (performance.now() - t0) / (steps * act.length);
+    } else { simTime += steps * DT; exp.t += steps * DT; }
+  }
+  updateExperiment(paused ? 0 : dt);
+  for (const g of rings) g.t += dt;
+  for (let i = rings.length - 1; i >= 0; i--) if (rings[i].t > 1.5) rings.splice(i, 1);
+  for (const m of marks) m.t += dt;
+  for (const h of exp.hits) h.t += dt;
+
+  // Idle in free space with nothing alive? Throw in something to look at.
+  if (scene === 'free' && !particles.some(p => p.active) && now - lastInput > 9000) {
+    lastInput = now;
+    const a = Math.random() * Math.PI * 2, c = particles[0];
+    addPacket(c, LX / 2 - Math.cos(a) * 60, LY / 2 - Math.sin(a) * 30, Math.cos(a) * 0.9, Math.sin(a) * 0.9, PACKET_SIGMA);
+    addPacket(c, LX / 2 + Math.cos(a + 0.5) * 60, LY / 2 + Math.sin(a + 0.5) * 30, -Math.cos(a + 0.5) * 0.9, -Math.sin(a + 0.5) * 0.9, PACKET_SIGMA);
+  }
+  const tr = performance.now();
+  render(now);
+  perf.render = 0.9 * perf.render + 0.1 * (performance.now() - tr);
+  perf.frame = 0.9 * perf.frame + 0.1 * (performance.now() - now);
+  requestAnimationFrame(frame);
+}
+
+layout();
+setScene('free');
+syncButtons();
+requestAnimationFrame(frame);
+// Exposed for tinkering from the dev console.
+window.QF = { zeno, particles, step, measureAt, observeAll, addPacket, setScene, exp, perf, get DY() { return DY; }, get stepCost() { return stepCost; } };
+</script>
+</body>
+</html>
