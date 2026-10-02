@@ -15,7 +15,12 @@ needs `https://` or `localhost`, e.g. `npx http-server`.)
 | **Click** | Looks for the particle. The % by the cursor is the chance of finding it there. If it's found, the whole cloud collapses to a dot. If not, a hole appears where you looked. |
 | **Hold** | Keeps watching. A watched particle can't escape (quantum Zeno effect). Move slowly to herd it around. |
 | **Space** | Observes everything at once. |
-| **Scenes** | Double slit (with "Peek at slits" to destroy the pattern), tunneling, harmonic trap (a Schrödinger's-cat state), stadium billiard. |
+| **Scenes** | Double slit (with "Peek at slits" to destroy the pattern), tunneling, harmonic trap (a Schrödinger's-cat state), stadium billiard, entangled pair. |
+| **Spin** | Throws vortex waves that carry angular momentum. Phase view shows them as rainbow spirals. |
+| **Forces** | Makes different-colored particles push each other away or pull each other in. |
+| **Energy** | Shows each particle's energy and spin. In the trap it shows the allowed energy levels, and **Measure energy** freezes the particle into one of them. |
+| **Entangled pair** | Two particles on two wires sharing one wavefunction. Finding one changes the other. |
+| **Share** | Gives a code (or link) that rebuilds your scene, walls and thrown waves. |
 | **Mic** | Noise shakes the clouds, and a clap collapses them. |
 
 Press **?** in the app for the full explanation.
@@ -35,5 +40,13 @@ Press **?** in the app for the full explanation.
 - **Double slit:** the screen records the probability flux absorbed at the right edge, and each run samples one hit from it.
   "Peek" is a which-path measurement (upper or lower half) just after the slits.
 - **Boundaries** are absorbing layers, so probability that leaves the box is gone.
+- **Spin:** a vortex packet `((x−x₀) ± i(y−y₀))·Gaussian` carries angular momentum ±ħ (the meter reads 0.996ħ).
+- **Forces:** mean-field (Hartree) interaction through an FFT convolution with a Gaussian kernel. It pushes and pulls but by
+  construction cannot entangle.
+- **Energy:** ⟨T⟩ is computed exactly in k-space and ⟨V⟩ in real space. In the trap, ψ is projected onto Hermite-Gauss
+  eigenstates with energy ħω(nx + ny + 1). The starting cat state occupies only even levels, and measuring the energy projects
+  onto one level, which is a stationary state.
+- **Entangled pair:** the full two-particle wavefunction ψ(x₁, x₂) on a line, evolved with H = p₁²/2 + p₂²/2 + V(x₁ − x₂) on
+  a 128×128 grid. The wires show the marginals and the inset shows |ψ(x₁, x₂)|².
 
 Open the dev console and use `QF` to poke at the internals, for example `QF.particles[0].re`.
