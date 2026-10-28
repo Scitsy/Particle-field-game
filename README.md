@@ -26,6 +26,7 @@ needs `https://` or `localhost`, e.g. `npx http-server`.)
 | **Time** | **Rewind** runs time backwards, the speed button picks ¼× to 2×, and the slider jumps to any recent moment. Playing forwards from an earlier moment starts a new timeline. |
 | **Challenges** | Six puzzles in the scene menu: get enough of the cloud into the gold ring using throws, bank shots, tunneling, the energy gate, your gaze and amplifiers. |
 | **Share** | Gives a code (or link) that rebuilds your scene, walls and thrown waves. |
+| **Sound** | Every particle hums: pitch follows its energy, the sound pans with the cloud, and spin adds a wobble. In the trap you hear the energy levels as a chord that collapses to one note when you measure the energy. The button cycles all sound, effects only, off. |
 | **Mic** | Noise shakes the clouds, and a clap collapses them. |
 
 Press **?** in the app for the full explanation.
