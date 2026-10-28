@@ -199,7 +199,7 @@
     <li><b>Challenges</b> (in the scene menu): six puzzles. Get enough of the cloud into the gold ring. On levels with a green pad,
       every throw starts from the pad and your drag only sets direction and speed. <b>Restart</b> (<span class="k">R</span>) keeps what you drew.</li>
     <li><b>Share</b> gives you a code (or link) that rebuilds your walls and waves for someone else.</li>
-    <li><b>Sound</b>: every particle hums. Higher energy means a higher note, the sound pans left and right with the cloud,
+    <li><b>Sound</b>: every particle hums, each color in its own instrument: cyan is a flute, magenta a cello, gold a bell. Higher energy means a higher note, the sound pans left and right with the cloud,
       and a spinning particle wobbles. In the <b>Harmonic trap</b> you hear the energy levels themselves: a particle spread over
       several levels plays a chord, and <b>Measure energy</b> collapses it to one pure note. The button cycles all sound, effects only, off.</li>
     <li><b>Mic</b>: noise shakes the clouds (the environment disturbing them). A loud clap collapses everything.</li>
@@ -849,7 +849,7 @@ function measureEnergy(p) {
   p.normalizeTo(1);
   trapLevels(p);
   toast(`Energy measured: level ${L}, E = ${L + 1} ħω. The pattern stops moving.`);
-  note(LY * (1 - L / 100), 0.25, 1.6);
+  note(LY * (1 - L / 100), 0.25, 1.6, 0, p.idx);
 }
 
 // ---------------------------------------------------------------- effects & feedback
@@ -861,7 +861,7 @@ function onDetect(p, x, y, quiet) {
   if (!quiet) {
     marks.push({ x, y, col: p.col, t: 0 }); if (marks.length > 300) marks.shift();
     slowmo = 1;
-    note(y, 0.32, 1.6); note(y, 0.12, 2.2, 2);
+    note(y, 0.32, 1.6, 0, p.idx); note(y, 0.12, 2.2, 1, p.idx);
   }
 }
 function onMiss(x, y) { rings.push({ x, y, t: 0, col: [160, 170, 200], kind: 'miss' }); thud(); }
@@ -1108,7 +1108,7 @@ function collidePair() {
     const g = Math.exp(-d1 * d1 / (4 * s * s) - d2 * d2 / (4 * s * s)), ph = k * x1 - k * x2;
     return [g * Math.cos(ph), g * Math.sin(ph)];
   });
-  swoosh(0.7);
+  swoosh(0.7, 1);
 }
 function pairStep() {
   const re = pair.re, im = pair.im, Pc_ = pair.Pc, Ps_ = pair.Ps;
@@ -1151,7 +1151,7 @@ function pairMeasure(w, x) {
     let t = 0; for (let k = 0; k < PN; k++) t += re[k] * re[k] + im[k] * im[k];
     const f = 1 / Math.sqrt(t); for (let k = 0; k < PN; k++) { re[k] *= f; im[k] *= f; }
     rings.push({ x: xs, y, t: 0, col: COLORS[w], kind: 'hit' }); marks.push({ x: xs, y, col: COLORS[w], t: 0 });
-    note(y, 0.3, 1.5); slowmo = 1;
+    note(y, 0.3, 1.5, 0, w); slowmo = 1;
   } else {
     for (let b = 0; b < PM; b++) for (let a = 0; a < PM; a++) {
       const d = coord(a, b) - x, f = Math.sqrt(Math.max(0, 1 - detW(d * d, DET_R))), k = b * PM + a; re[k] *= f; im[k] *= f;
@@ -1180,7 +1180,7 @@ function pairObserve() {                   // find both at once, jointly sampled
     pair.re[k] *= g; pair.im[k] *= g;
   }
   { let t = 0; for (let k = 0; k < PN; k++) t += pair.re[k] ** 2 + pair.im[k] ** 2; const f = 1 / Math.sqrt(t); for (let k = 0; k < PN; k++) { pair.re[k] *= f; pair.im[k] *= f; } }
-  [x1, x2].forEach((x, w) => { const y = WIRE_Y[w] * LY; rings.push({ x, y, t: 0, col: COLORS[w], kind: 'hit' }); marks.push({ x, y, col: COLORS[w], t: 0 }); note(y, 0.25, 1.4, w); });
+  [x1, x2].forEach((x, w) => { const y = WIRE_Y[w] * LY; rings.push({ x, y, t: 0, col: COLORS[w], kind: 'hit' }); marks.push({ x, y, col: COLORS[w], t: 0 }); note(y, 0.25, 1.4, 0, w); });
   slowmo = 1;
 }
 
@@ -1868,7 +1868,7 @@ function launch(x0, y0, x1, y1) {
   }
   lastThrow[current] = { x: x0, y: y0, kx: k * dx / L, ky: k * dy / L, m: spin };
   addWave(particles[current], x0, y0, k * dx / L, k * dy / L, PACKET_SIGMA, PACKET_SIGMA, spin);
-  swoosh(k);
+  swoosh(k, current);
 }
 // Holding = watching continuously (quantum Zeno effect).
 // The first moment of the hold is one real Born-rule look: "is it inside the detector?".
@@ -1928,15 +1928,28 @@ function audioInit() {
   master.connect(AC.destination); master.connect(delay); delay.connect(lp); lp.connect(fb); fb.connect(delay); lp.connect(AC.destination);
 }
 const SCALE = [0, 2, 4, 7, 9];
-function note(y, vol, dur, oct = 0) {   // pentatonic pitch from vertical position
+// Each color has its own instrument, used for its hum and its effects.
+//   cyan = flute (pure sine), magenta = cello (filtered sawtooth, an octave down), gold = bell (sine with the
+//   inharmonic 2.76× overtone real bells have, an octave up).
+const TIMBRE = [
+  { wave: 'sine',     ping: 'sine',     oct: 0,  partial: 2,    pmix: 0.12, level: 1,    bright: 1 },
+  { wave: 'sawtooth', ping: 'triangle', oct: -1, partial: 2,    pmix: 0.15, level: 0.55, bright: 0.55 },
+  { wave: 'sine',     ping: 'sine',     oct: 1,  partial: 2.76, pmix: 0.45, level: 0.8,  bright: 1.4 },
+];
+function note(y, vol, dur, oct = 0, tb = 0) {   // pentatonic pitch from vertical position, in color tb's instrument
   if (!AC || !soundOn) return;
+  const T = TIMBRE[tb] || TIMBRE[0];
   const idx = Math.max(0, Math.min(14, Math.floor((1 - y / LY) * 15)));
-  const semi = SCALE[idx % 5] + 12 * (Math.floor(idx / 5) + oct);
+  const semi = SCALE[idx % 5] + 12 * (Math.floor(idx / 5) + oct + T.oct);
   const f = 220 * Math.pow(2, semi / 12), t = AC.currentTime;
-  const o = AC.createOscillator(), g = AC.createGain();
-  o.type = 'sine'; o.frequency.value = f;
+  const g = AC.createGain();
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
+  g.connect(master);
+  [[1, 1, T.ping], [T.partial, T.pmix, 'sine']].forEach(([ratio, amp, type]) => {
+    const o = AC.createOscillator(), og = AC.createGain();
+    o.type = type; o.frequency.value = f * ratio; og.gain.value = amp;
+    o.connect(og); og.connect(g); o.start(t); o.stop(t + dur + 0.05);
+  });
 }
 // ---- Sound that follows the waves
 // Every particle has its own voice. Its pitch follows the particle's energy ⟨E⟩ (rounded to a pentatonic
@@ -1950,7 +1963,8 @@ function scaleFreq(degree) {                 // pentatonic degree → Hz, degree
   const d = Math.round(degree), oct = Math.floor(d / 5), semi = SCALE[((d % 5) + 5) % 5] + 12 * oct;
   return 196 * Math.pow(2, semi / 12);
 }
-function makeVoice() {
+function makeVoice(tb) {
+  const T = TIMBRE[tb];
   if (!humBus) { humBus = AC.createGain(); humBus.gain.value = 0.7; humBus.connect(master); }
   const out = AC.createGain(); out.gain.value = 0;
   const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1200; lp.Q.value = 0.7;
@@ -1960,12 +1974,12 @@ function makeVoice() {
   const oscs = [], gains = [];
   for (let n = 0; n < VOICE_OSCS; n++) {
     const o = AC.createOscillator(), g = AC.createGain();
-    o.type = n === 0 ? 'triangle' : 'sine'; o.frequency.value = 220; g.gain.value = 0;
+    o.type = n === 1 ? 'sine' : T.wave; o.frequency.value = 220; g.gain.value = 0;
     lfoGain.connect(o.detune);              // vibrato, in cents
     o.connect(g); g.connect(lp); o.start();
     oscs.push(o); gains.push(g);
   }
-  return { out, lp, pan, lfo, lfoGain, oscs, gains, nref: null };
+  return { out, lp, pan, lfo, lfoGain, oscs, gains, nref: null, T };
 }
 function updateVoices() {
   if (!AC) return;
@@ -1974,11 +1988,11 @@ function updateVoices() {
     const live = humOn && soundOn && !paused && p.active && p.obs && scene !== 'pair' && scene !== 'slit';
     let v = voices[i];
     if (!live) { if (v) v.out.gain.setTargetAtTime(0, t, 0.15); return; }
-    if (!v) v = voices[i] = makeVoice();
-    const o = p.obs, loud = 0.055 * Math.min(1, p.norm);
+    if (!v) v = voices[i] = makeVoice(i);
+    const T = v.T, m = Math.pow(2, T.oct), o = p.obs, loud = 0.055 * T.level * Math.min(1, p.norm);
     v.out.gain.setTargetAtTime(loud, t, 0.2);
     if (v.pan) { const [X] = toScreen(p.mx, p.my); v.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, (X / W) * 2 - 1)) * 0.8, t, tc); }
-    v.lp.frequency.setTargetAtTime(500 + 2500 * Math.min(1, Math.max(0, o.T) / Math.max(0.05, o.E)), t, tc);   // moving = bright, sitting = mellow
+    v.lp.frequency.setTargetAtTime((500 + 2500 * Math.min(1, Math.max(0, o.T) / Math.max(0.05, o.E))) * T.bright, t, tc);   // moving = bright, sitting = mellow
     const spin = Math.min(3, Math.abs(o.L));
     v.lfo.frequency.setTargetAtTime(2 + 2 * spin, t, tc); v.lfoGain.gain.setTargetAtTime(spin > 0.25 ? 12 * spin : 0, t, tc);
     if (scene === 'trap' && p.levels) {
@@ -1987,27 +2001,28 @@ function updateVoices() {
       let mean = 0, tot = 0; P.forEach((q, n) => { mean += q * n; tot += q; }); mean /= tot || 1;
       if (v.nref === null || Math.abs(mean - v.nref) > 12) v.nref = Math.round(mean);
       const sum = idx.reduce((a, n) => a + P[n], 0) || 1;
-      idx.forEach((n, m) => {
-        v.oscs[m].frequency.setTargetAtTime(scaleFreq(n - v.nref + 5), t, 0.05);
-        v.gains[m].gain.setTargetAtTime(0.9 * P[n] / sum, t, 0.25);
+      idx.forEach((n, j) => {
+        v.oscs[j].frequency.setTargetAtTime(scaleFreq(n - v.nref + 5) * m, t, 0.05);
+        v.gains[j].gain.setTargetAtTime(0.9 * P[n] / sum, t, 0.25);
       });
-      for (let m = idx.length; m < VOICE_OSCS; m++) v.gains[m].gain.setTargetAtTime(0, t, 0.25);
+      for (let j = idx.length; j < VOICE_OSCS; j++) v.gains[j].gain.setTargetAtTime(0, t, 0.25);
     } else {
       v.nref = null;
       // energy → pitch: E ≈ 0.1 … 1.3 spans about two octaves, rounded to the scale
       const deg = Math.max(0, Math.min(14, 2 + Math.log2(Math.max(0.02, o.E) / 0.1) * 4));
-      v.oscs[0].frequency.setTargetAtTime(scaleFreq(deg), t, 0.08);
-      v.oscs[1].frequency.setTargetAtTime(scaleFreq(deg) * 2, t, 0.08);
-      v.gains[0].gain.setTargetAtTime(0.8, t, 0.1); v.gains[1].gain.setTargetAtTime(0.12, t, 0.1);
-      for (let m = 2; m < VOICE_OSCS; m++) v.gains[m].gain.setTargetAtTime(0, t, 0.1);
+      v.oscs[0].frequency.setTargetAtTime(scaleFreq(deg) * m, t, 0.08);
+      v.oscs[1].frequency.setTargetAtTime(scaleFreq(deg) * m * T.partial, t, 0.08);
+      v.gains[0].gain.setTargetAtTime(0.8, t, 0.1); v.gains[1].gain.setTargetAtTime(0.8 * T.pmix, t, 0.1);
+      for (let j = 2; j < VOICE_OSCS; j++) v.gains[j].gain.setTargetAtTime(0, t, 0.1);
     }
   });
 }
 
-function swoosh(k) {
+function swoosh(k, tb = 0) {
   if (!AC || !soundOn) return;
+  const T = TIMBRE[tb] || TIMBRE[0], m = Math.pow(2, T.oct);
   const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
-  o.type = 'triangle'; o.frequency.setValueAtTime(180, t); o.frequency.exponentialRampToValueAtTime(260 + 400 * k, t + 0.25);
+  o.type = T.ping === 'sine' ? 'triangle' : 'sawtooth'; o.frequency.setValueAtTime(180 * m, t); o.frequency.exponentialRampToValueAtTime((260 + 400 * k) * m, t + 0.25);
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.06, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
   o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.5);
 }
@@ -2334,7 +2349,7 @@ function frame(now) {
   if (autoThrow && !paused && scene !== 'pair') {
     const p = particles[current], L = lastThrow[current];
     if (p.active || !L) autoWait = 0.4;
-    else if (!tl.rewinding && (autoWait -= dt) <= 0) { historyEvent(() => addWave(p, L.x, L.y, L.kx, L.ky, PACKET_SIGMA, PACKET_SIGMA, L.m)); swoosh(Math.hypot(L.kx, L.ky)); autoWait = 0.4; }
+    else if (!tl.rewinding && (autoWait -= dt) <= 0) { historyEvent(() => addWave(p, L.x, L.y, L.kx, L.ky, PACKET_SIGMA, PACKET_SIGMA, L.m)); swoosh(Math.hypot(L.kx, L.ky), current); autoWait = 0.4; }
   }
   const tr = performance.now();
   render(now);
