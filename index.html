@@ -199,8 +199,10 @@
     <li><b>Challenges</b> (in the scene menu): six puzzles. Get enough of the cloud into the gold ring. On levels with a green pad,
       every throw starts from the pad and your drag only sets direction and speed. <b>Restart</b> (<span class="k">R</span>) keeps what you drew.</li>
     <li><b>Share</b> gives you a code (or link) that rebuilds your walls and waves for someone else.</li>
-    <li><b>Sound</b>: every particle makes music in its own instrument: cyan is a flute, magenta a cello, and gold plays a snare-drum
-      beat (faster when it has more energy; uneven in the trap until you measure its energy, then perfectly steady). Higher energy means a higher note, the sound pans left and right with the cloud,
+    <li><b>Sound</b>: the particles make a song together, all locked to one beat. Cyan is an 808 kick, magenta a dubstep wobble bass,
+      gold a snare. <b>Speed</b> picks the rhythm (slow = sparse, fast = busy), <b>direction</b> picks the note (right is the root note;
+      turn counterclockwise to climb the scale), <b>spin</b> changes how fast the bass wobbles. In the trap, a particle spread over
+      several energy levels wanders between notes; measure its energy and it settles into one loop.</li> Higher energy means a higher note, the sound pans left and right with the cloud,
       and a spinning particle wobbles. In the <b>Harmonic trap</b> you hear the energy levels themselves: a particle spread over
       several levels plays a chord, and <b>Measure energy</b> collapses it to one pure note. The button cycles all sound, effects only, off.</li>
     <li><b>Mic</b>: noise shakes the clouds (the environment disturbing them). A loud clap collapses everything.</li>
@@ -245,9 +247,9 @@
       Absorbers and amplifiers are an imaginary potential <code>V − iΓ/2</code>: amplitude changes by <code>e<sup>−Γt/2</sup></code>, decay for Γ &gt; 0,
       gain for Γ &lt; 0. A single particle can't be more than 100% likely, so after gain ψ is scaled back to Σ|ψ|² = 1: the amplified branch
       of the superposition gains weight relative to the others.</li>
-    <li>Sound: each voice's pitch is ⟨E⟩ on a log scale rounded to a pentatonic scale; pan is the cloud's position, volume is Σ|ψ|²,
-      vibrato is |L<sub>z</sub>|. In the trap each oscillator is one energy level n (the ten most likely), at a scale step set by n
-      and a loudness set by P(n), so you literally hear the spectrum.</li>
+    <li>Sound: a 16-step sequencer at 128 BPM. Rhythm pattern from the speed √(2⟨T⟩); note from the direction of the probability
+      current <code>⟨j⟩/Σ|ψ|²</code> (eight compass directions on a minor pentatonic scale); wobble rate from the sign of L<sub>z</sub>;
+      pan from the cloud's position; volume from Σ|ψ|². In the trap each beat samples an energy level n with probability P(n).</li>
     <li>Mic noise adds a random, moving potential: a crude model of decoherence (dephasing by the environment).</li>
   </ul>
   <h3>Keys</h3>
@@ -771,7 +773,7 @@ function measureObservables(p) {
   }
   if (s < 1e-9 || S2 < 1e-20) { p.obs = null; return; }
   const mx = X / s, my = Y / s;
-  p.obs = { T: T / S2, V: V / s, E: T / S2 + V / s, L: (L0 - mx * JY + my * JX) / s };
+  p.obs = { T: T / S2, V: V / s, E: T / S2 + V / s, L: (L0 - mx * JY + my * JX) / s, vx: JX / s, vy: JY / s };
 }
 
 // Harmonic-trap eigenstates are products of Hermite-Gauss functions φ_nx(x)·φ_ny(y), energy ħω(nx + ny + 1).
@@ -862,7 +864,7 @@ function onDetect(p, x, y, quiet) {
   if (!quiet) {
     marks.push({ x, y, col: p.col, t: 0 }); if (marks.length > 300) marks.shift();
     slowmo = 1;
-    note(y, 0.32, 1.6, 0, p.idx); note(y, 0.12, 2.2, 1, p.idx);
+    note(y, 0.32, 1.6, 0, p.idx);
   }
 }
 function onMiss(x, y) { rings.push({ x, y, t: 0, col: [160, 170, 200], kind: 'miss' }); thud(); }
@@ -1919,7 +1921,7 @@ function paint(xa, ya, xb, yb) {
 }
 
 // ---------------------------------------------------------------- audio: synth + microphone
-let AC = null, master = null, soundOn = true, humOn = true;   // humOn: the continuous voices that follow the waves
+let AC = null, master = null, soundOn = true, humOn = true;   // humOn: the particles' music (the beat)
 function audioInit() {
   if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
   const A = window.AudioContext || window.webkitAudioContext; if (!A) return;
@@ -1929,14 +1931,24 @@ function audioInit() {
   master.connect(AC.destination); master.connect(delay); delay.connect(lp); lp.connect(fb); fb.connect(delay); lp.connect(AC.destination);
 }
 const SCALE = [0, 2, 4, 7, 9];
-// Each color has its own instrument, used for its hum and its effects.
-//   cyan = flute (pure sine), magenta = cello (filtered sawtooth, an octave down), gold = snare drum. A drum has no
-//   pitch, so instead of humming a note the gold particle plays a beat whose tempo follows its energy.
-const TIMBRE = [
-  { wave: 'sine',     ping: 'sine',     oct: 0,  partial: 2,    pmix: 0.12, level: 1,    bright: 1 },
-  { wave: 'sawtooth', ping: 'triangle', oct: -1, partial: 2,    pmix: 0.15, level: 0.55, bright: 0.55 },
-  { drum: true,                         oct: 0,  partial: 1,    pmix: 0,    level: 1,    bright: 1 },
-];
+// ---- Sound: the particles make a song
+// Everything plays on one shared clock (128 BPM, 16 steps per bar), like a drum machine:
+//   cyan    = 808 kick   (a pitched boom)
+//   magenta = wobble bass (dubstep "wub": a growling bass whose filter wobbles in time)
+//   gold    = snare
+// How fast a particle moves picks its rhythm pattern (sparse → steady → busy), the direction it's heading picks the
+// note (a compass of notes), spin picks the wobble speed, position pans it, and Σ|ψ|² is its volume.
+// In the trap each beat samples an energy level n with probability P(n): a superposition wanders between notes and
+// patterns, and a measured energy plays one steady loop.
+const BPM = 128, STEP = 60 / BPM / 4;
+const INSTR = ['kick', 'bass', 'snare'];
+const PATTERNS = {
+  kick:  [[0, 8], [0, 4, 8, 12], [0, 3, 6, 8, 10, 11, 14]],
+  bass:  [[0], [0, 8], [0, 3, 6, 10, 12, 14]],
+  snare: [[8], [4, 12], [4, 12, 13, 14, 15]],
+};
+const MINOR_PENTA = [0, 3, 5, 7, 10];
+const degSemis = d => MINOR_PENTA[((d % 5) + 5) % 5] + 12 * Math.floor(d / 5);
 let noiseBuf = null;
 // Snare: a burst of filtered noise (the wires) on top of a short pitch-dropping thump (the drum head).
 function snare(when, vol, pan = 0, tone = 190, out = master) {
@@ -1956,135 +1968,120 @@ function snare(when, vol, pan = 0, tone = 190, out = master) {
   og.gain.setValueAtTime(vol * 0.7, when); og.gain.exponentialRampToValueAtTime(0.0001, when + 0.1);
   o.connect(og); og.connect(dest); o.start(when); o.stop(when + 0.12);
 }
-function note(y, vol, dur, oct = 0, tb = 0) {   // pentatonic pitch from vertical position, in color tb's instrument
-  if (!AC || !soundOn) return;
-  const T = TIMBRE[tb] || TIMBRE[0];
-  if (T.drum) { snare(AC.currentTime, vol * 0.9, 0, 160 + 60 * (1 - y / LY) + 40 * oct); return; }
-  const idx = Math.max(0, Math.min(14, Math.floor((1 - y / LY) * 15)));
-  const semi = SCALE[idx % 5] + 12 * (Math.floor(idx / 5) + oct + T.oct);
-  const f = 220 * Math.pow(2, semi / 12), t = AC.currentTime;
+function kick(when, vol, pan = 0, freq = 52) {
+  const dest = AC.createStereoPanner ? AC.createStereoPanner() : AC.createGain();
+  if (dest.pan) dest.pan.value = pan;
+  dest.connect(master);
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(freq * 3.2, when); o.frequency.exponentialRampToValueAtTime(freq, when + 0.07);
+  g.gain.setValueAtTime(vol, when); g.gain.exponentialRampToValueAtTime(0.0001, when + 0.55);
+  o.connect(g); g.connect(dest); o.start(when); o.stop(when + 0.6);
+  const c = AC.createOscillator(), cg = AC.createGain();               // the beater click
+  c.type = 'square'; c.frequency.value = 1800;
+  cg.gain.setValueAtTime(vol * 0.12, when); cg.gain.exponentialRampToValueAtTime(0.0001, when + 0.012);
+  c.connect(cg); cg.connect(dest); c.start(when); c.stop(when + 0.02);
+}
+function wobbleBass(when, vol, pan, freq, dur, wobHz) {
+  const dest = AC.createStereoPanner ? AC.createStereoPanner() : AC.createGain();
+  if (dest.pan) dest.pan.value = pan * 0.5;
+  dest.connect(master);
+  const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 9; lp.frequency.value = 500;
+  const lfo = AC.createOscillator(), depth = AC.createGain();
+  lfo.type = 'sine'; lfo.frequency.value = wobHz; depth.gain.value = 650;
+  lfo.connect(depth); depth.connect(lp.frequency);
   const g = AC.createGain();
-  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  g.connect(master);
-  [[1, 1, T.ping], [T.partial, T.pmix, 'sine']].forEach(([ratio, amp, type]) => {
+  g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(vol, when + 0.01);
+  g.gain.setValueAtTime(vol, when + Math.max(0.02, dur - 0.05)); g.gain.linearRampToValueAtTime(0, when + dur);
+  lp.connect(g); g.connect(dest);
+  const end = when + dur + 0.02;
+  [['sawtooth', 1, 0.5], ['square', 1.006, 0.35], ['sine', 0.5, 0.9]].forEach(([type, r, amp]) => {
     const o = AC.createOscillator(), og = AC.createGain();
-    o.type = type; o.frequency.value = f * ratio; og.gain.value = amp;
-    o.connect(og); og.connect(g); o.start(t); o.stop(t + dur + 0.05);
+    o.type = type; o.frequency.value = freq * r; og.gain.value = amp;
+    o.connect(og); og.connect(type === 'sine' ? g : lp); o.start(when); o.stop(end);
   });
+  lfo.start(when); lfo.stop(end);
 }
-// ---- Sound that follows the waves
-// Every particle has its own voice. Its pitch follows the particle's energy ⟨E⟩ (rounded to a pentatonic
-// scale), it pans with the cloud's position on screen, fades with Σ|ψ|², and wobbles in proportion to its spin.
-// In the harmonic trap the voice IS the energy spectrum: each allowed level n plays its own scale note, as loud as
-// P(n). A superposition of levels sounds as a chord; Measure energy collapses the chord to one note.
-const VOICE_OSCS = 10;
-let humBus = null;
-const voices = [null, null, null];
-function scaleFreq(degree) {                 // pentatonic degree → Hz, degree 0 = G3
-  const d = Math.round(degree), oct = Math.floor(d / 5), semi = SCALE[((d % 5) + 5) % 5] + 12 * oct;
-  return 196 * Math.pow(2, semi / 12);
-}
-function makeVoice(tb) {
-  const T = TIMBRE[tb];
-  if (!humBus) { humBus = AC.createGain(); humBus.gain.value = 0.7; humBus.connect(master); }
-  const out = AC.createGain(); out.gain.value = 0;
-  const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1200; lp.Q.value = 0.7;
-  const pan = AC.createStereoPanner ? AC.createStereoPanner() : null;
-  lp.connect(out); if (pan) { out.connect(pan); pan.connect(humBus); } else out.connect(humBus);
-  const lfo = AC.createOscillator(), lfoGain = AC.createGain(); lfo.frequency.value = 3; lfoGain.gain.value = 0; lfo.connect(lfoGain); lfo.start();
-  const oscs = [], gains = [];
-  for (let n = 0; n < VOICE_OSCS; n++) {
+// Effects (finding a particle) in each color's instrument; y picks the note for pitched ones.
+// With no color (tb = -1: double-slit dots, a level win) it's a soft pentatonic chime.
+function note(y, vol, dur, oct = 0, tb = -1) {
+  if (!AC || !soundOn) return;
+  const t = AC.currentTime, idx = Math.max(0, Math.min(9, Math.floor((1 - y / LY) * 10))), semi = degSemis(idx) + 12 * oct;
+  if (tb < 0) {
+    const i = Math.max(0, Math.min(14, Math.floor((1 - y / LY) * 15)));
+    const f = 220 * Math.pow(2, (SCALE[i % 5] + 12 * (Math.floor(i / 5) + oct)) / 12);
     const o = AC.createOscillator(), g = AC.createGain();
-    o.type = n === 1 ? 'sine' : T.wave; o.frequency.value = 220; g.gain.value = 0;
-    lfoGain.connect(o.detune);              // vibrato, in cents
-    o.connect(g); g.connect(lp); o.start();
-    oscs.push(o); gains.push(g);
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
   }
-  return { out, lp, pan, lfo, lfoGain, oscs, gains, nref: null, T };
+  else if (tb === 2) snare(t, vol * 0.9, 0, 160 + 60 * (1 - y / LY) + 40 * oct);
+  else if (tb === 1) wobbleBass(t, vol * 0.5, 0, 55 * Math.pow(2, semi / 12), 0.35, BPM / 60 * 4);
+  else kick(t, vol * 1.3, 0, 45 * Math.pow(2, Math.min(7, semi) / 12));
 }
-// The drum's version of a hum: hits scheduled a little ahead. Higher energy → faster beat. In the trap each hit
-// picks an energy level at random with probability P(n), so a superposition grooves unevenly and a measured
-// energy keeps perfect time. Spin adds a quiet ghost note between hits.
-const drums = [null, null, null];   // per color: next scheduled hit time
-function drumInterval(p, d) {
+// Which way a particle is heading picks its note: right = root, then counterclockwise up the scale.
+function headingDegree(p) {
+  const o = p.obs, v = Math.hypot(o.vx, o.vy);
+  if (v < 0.06) return 0;
+  const [X0, Y0] = toScreen(p.mx, p.my), [X1, Y1] = toScreen(p.mx + o.vx * 10, p.my + o.vy * 10);
+  const ang = Math.atan2(-(Y1 - Y0), X1 - X0);                         // screen angle, up = +
+  return ((Math.round(ang / (Math.PI / 4)) % 8) + 8) % 8;
+}
+const seq = [null, null, null];      // per color: next step to schedule, and this beat's choices
+let songT0 = null;
+function beatChoices(p, d) {
+  const o = p.obs, speed = Math.sqrt(2 * Math.max(0, o.T));
   if (scene === 'trap' && p.levels) {
     const P = p.levels; let tot = 0, mean = 0; P.forEach((q, n) => { tot += q; mean += q * n; }); mean /= tot || 1;
     if (d.nref === null || Math.abs(mean - d.nref) > 12) d.nref = Math.round(mean);
     let u = Math.random() * tot, n = 0; for (; n < P.length - 1; n++) { u -= P[n]; if (u <= 0) break; }
-    return 0.42 * Math.pow(2, -(n - d.nref) / 10);
+    const rel = n - d.nref;
+    return { lvl: Math.max(0, Math.min(2, 1 + Math.round(rel / 4))), deg: ((rel % 8) + 8) % 8 };
   }
   d.nref = null;
-  return Math.max(0.12, Math.min(0.7, 0.3 * Math.pow(0.25 / Math.max(0.02, p.obs.E), 0.6)));
-}
-function updateDrum(p, i, live, t) {
-  if (!live) { drums[i] = null; return; }
-  const d = drums[i] || (drums[i] = { next: t + 0.05, nref: null });
-  if (!humBus) { humBus = AC.createGain(); humBus.gain.value = 0.7; humBus.connect(master); }
-  const [X] = toScreen(p.mx, p.my), pan = Math.max(-1, Math.min(1, (X / W) * 2 - 1)) * 0.8;
-  const vol = 0.16 * Math.min(1, p.norm), ghost = Math.abs(p.obs.L) > 0.25;
-  while (d.next < t + 0.35) {                       // schedule ahead so slow frames never make it stumble
-    const gap = drumInterval(p, d);
-    snare(Math.max(d.next, t), vol, pan, 190, humBus);
-    (d.hits || (d.hits = [])).push(Math.max(d.next, t)); if (d.hits.length > 24) d.hits.shift();   // recent hit times
-    if (ghost) snare(Math.max(d.next, t) + gap / 2, vol * 0.3, pan, 210, humBus);
-    d.next = Math.max(d.next, t) + gap;
-  }
+  return { lvl: speed < 0.5 ? 0 : speed < 0.9 ? 1 : 2, deg: headingDegree(p) };
 }
 function updateVoices() {
   if (!AC) return;
-  const t = AC.currentTime, tc = 0.12;
+  const t = AC.currentTime;
+  if (songT0 === null) songT0 = t;
+  const horizon = Math.floor((t + 0.35 - songT0) / STEP);
   particles.forEach((p, i) => {
     const live = humOn && soundOn && !paused && p.active && p.obs && scene !== 'pair' && scene !== 'slit';
-    if (TIMBRE[i].drum) { updateDrum(p, i, live, t); return; }
-    let v = voices[i];
-    if (!live) { if (v) v.out.gain.setTargetAtTime(0, t, 0.15); return; }
-    if (!v) v = voices[i] = makeVoice(i);
-    const T = v.T, m = Math.pow(2, T.oct), o = p.obs, loud = 0.055 * T.level * Math.min(1, p.norm);
-    v.out.gain.setTargetAtTime(loud, t, 0.2);
-    if (v.pan) { const [X] = toScreen(p.mx, p.my); v.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, (X / W) * 2 - 1)) * 0.8, t, tc); }
-    v.lp.frequency.setTargetAtTime((500 + 2500 * Math.min(1, Math.max(0, o.T) / Math.max(0.05, o.E))) * T.bright, t, tc);   // moving = bright, sitting = mellow
-    const spin = Math.min(3, Math.abs(o.L));
-    v.lfo.frequency.setTargetAtTime(2 + 2 * spin, t, tc); v.lfoGain.gain.setTargetAtTime(spin > 0.25 ? 12 * spin : 0, t, tc);
-    if (scene === 'trap' && p.levels) {
-      // the energy spectrum as a chord: the most likely levels, each on its own note
-      const P = p.levels, idx = Array.from(P.keys()).sort((a, b) => P[b] - P[a]).slice(0, VOICE_OSCS);
-      let mean = 0, tot = 0; P.forEach((q, n) => { mean += q * n; tot += q; }); mean /= tot || 1;
-      if (v.nref === null || Math.abs(mean - v.nref) > 12) v.nref = Math.round(mean);
-      const sum = idx.reduce((a, n) => a + P[n], 0) || 1;
-      idx.forEach((n, j) => {
-        v.oscs[j].frequency.setTargetAtTime(scaleFreq(n - v.nref + 5) * m, t, 0.05);
-        v.gains[j].gain.setTargetAtTime(0.9 * P[n] / sum, t, 0.25);
-      });
-      for (let j = idx.length; j < VOICE_OSCS; j++) v.gains[j].gain.setTargetAtTime(0, t, 0.25);
-    } else {
-      v.nref = null;
-      // energy → pitch: E ≈ 0.1 … 1.3 spans about two octaves, rounded to the scale
-      const deg = Math.max(0, Math.min(14, 2 + Math.log2(Math.max(0.02, o.E) / 0.1) * 4));
-      v.oscs[0].frequency.setTargetAtTime(scaleFreq(deg) * m, t, 0.08);
-      v.oscs[1].frequency.setTargetAtTime(scaleFreq(deg) * m * T.partial, t, 0.08);
-      v.gains[0].gain.setTargetAtTime(0.8, t, 0.1); v.gains[1].gain.setTargetAtTime(0.8 * T.pmix, t, 0.1);
-      for (let j = 2; j < VOICE_OSCS; j++) v.gains[j].gain.setTargetAtTime(0, t, 0.1);
+    if (!live) { seq[i] = null; return; }
+    const d = seq[i] || (seq[i] = { step: Math.ceil((t - songT0) / STEP), nref: null, ch: null });
+    const [X] = toScreen(p.mx, p.my), pan = Math.max(-1, Math.min(1, (X / W) * 2 - 1)) * 0.8, amt = Math.min(1, p.norm);
+    for (; d.step < horizon; d.step++) {
+      const s = d.step % 16, when = songT0 + d.step * STEP;
+      if (s % 4 === 0 || !d.ch) d.ch = beatChoices(p, d);              // choices refresh every beat
+      const pat = PATTERNS[INSTR[i]][d.ch.lvl];
+      if (!pat.includes(s)) continue;
+      if (when < t - 0.01) continue;                                    // too late to play this one
+      (d.hits || (d.hits = [])).push(when); if (d.hits.length > 24) d.hits.shift();
+      if (i === 2) snare(when, 0.16 * amt, pan, 190);
+      else if (i === 0) kick(when, 0.42 * amt, pan, 45 * Math.pow(2, Math.min(7, degSemis(d.ch.deg)) / 12));
+      else {
+        const nextIdx = pat.find(q => q > s), gap = ((nextIdx === undefined ? pat[0] + 16 : nextIdx) - s) * STEP;
+        const spin = p.obs.L, wob = BPM / 60 * (spin > 0.25 ? 4 : spin < -0.25 ? 1 : 2);   // 1/16, 1/4 or 1/8 wobbles
+        wobbleBass(when, 0.16 * amt, pan, 55 * Math.pow(2, degSemis(d.ch.deg) / 12), Math.min(gap, 4 * STEP * 2), wob);
+      }
     }
   });
 }
 
 function swoosh(k, tb = 0) {
   if (!AC || !soundOn) return;
-  const T = TIMBRE[tb] || TIMBRE[0], m = Math.pow(2, T.oct);
-  if (T.drum) {                                    // a brush sweep: noise through a band-pass sliding upwards
-    snare(AC.currentTime + 0.3, 0.05);           // (and a light tap at the end)
-    if (!noiseBuf) return;
-    const t = AC.currentTime, n = AC.createBufferSource(), bp = AC.createBiquadFilter(), g = AC.createGain();
-    n.buffer = noiseBuf; bp.type = 'bandpass'; bp.Q.value = 1.5;
-    bp.frequency.setValueAtTime(800, t); bp.frequency.exponentialRampToValueAtTime(2500 + 3000 * k, t + 0.3);
+  const t = AC.currentTime;
+  if (tb === 2 || tb === 0) {                       // a noise sweep: brush for the snare, riser for the kick
+    if (tb === 2) snare(t + 0.3, 0.05);
+    if (!noiseBuf) snare(t, 0.0001);                // makes sure the noise buffer exists
+    const n = AC.createBufferSource(), bp = AC.createBiquadFilter(), g = AC.createGain();
+    n.buffer = noiseBuf; bp.type = 'bandpass'; bp.Q.value = tb === 0 ? 4 : 1.5;
+    bp.frequency.setValueAtTime(tb === 0 ? 300 : 800, t); bp.frequency.exponentialRampToValueAtTime((tb === 0 ? 1500 : 2500) + 3000 * k, t + 0.3);
     g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.08, t + 0.15); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
     n.connect(bp); bp.connect(g); g.connect(master); n.start(t); n.stop(t + 0.36);
     return;
   }
-  const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
-  o.type = T.ping === 'sine' ? 'triangle' : 'sawtooth'; o.frequency.setValueAtTime(180 * m, t); o.frequency.exponentialRampToValueAtTime((260 + 400 * k) * m, t + 0.25);
-  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.06, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
-  o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.5);
+  wobbleBass(t, 0.08, 0, 55 * (1 + k), 0.3, BPM / 60 * 4);    // magenta: a quick "wub"
 }
 function thud() {
   if (!AC || !soundOn) return;
@@ -2430,7 +2427,7 @@ layout();
 syncButtons();
 requestAnimationFrame(frame);
 // Exposed for tinkering from the dev console.
-window.QF = { drums, voices, get AC() { return AC; }, toScreen, toPhys, tl, tlStepBack, tlSeek, tlSnap, stepBack, historyEvent, get speed() { return SPEEDS[speedIdx]; }, BRUSH, gotoLevel, goalProb, LEVELS, lvPt, rebuild: rebuildPotential, hasGain: () => hasGain, matCounts: () => { const c = { wall: 0, gate: 0, absorb: 0, amp: 0 }; for (let k = 0; k < N; k++) { if (Gwall[k] > 0) c.absorb++; else if (Gwall[k] < 0) c.amp++; else if (Vwall[k] >= 3) c.wall++; else if (Vwall[k] > 0) c.gate++; } return c; }, pair, pairStep, encodeSetup, decodeSetup, measureEnergy, trapLevels, measureObservables, updateForces, get forces() { return forces; }, set forces(v) { forces = v; forcesDirty = true; }, waveLog, zeno, particles, step, measureAt, observeAll, addPacket, setScene, exp, perf, get DY() { return DY; }, get stepCost() { return stepCost; } };
+window.QF = { seq,  get AC() { return AC; }, toScreen, toPhys, tl, tlStepBack, tlSeek, tlSnap, stepBack, historyEvent, get speed() { return SPEEDS[speedIdx]; }, BRUSH, gotoLevel, goalProb, LEVELS, lvPt, rebuild: rebuildPotential, hasGain: () => hasGain, matCounts: () => { const c = { wall: 0, gate: 0, absorb: 0, amp: 0 }; for (let k = 0; k < N; k++) { if (Gwall[k] > 0) c.absorb++; else if (Gwall[k] < 0) c.amp++; else if (Vwall[k] >= 3) c.wall++; else if (Vwall[k] > 0) c.gate++; } return c; }, pair, pairStep, encodeSetup, decodeSetup, measureEnergy, trapLevels, measureObservables, updateForces, get forces() { return forces; }, set forces(v) { forces = v; forcesDirty = true; }, waveLog, zeno, particles, step, measureAt, observeAll, addPacket, setScene, exp, perf, get DY() { return DY; }, get stepCost() { return stepCost; } };
 </script>
 </body>
 </html>
