@@ -1930,11 +1930,11 @@ function audioInit() {
 const SCALE = [0, 2, 4, 7, 9];
 // Each color has its own instrument, used for its hum and its effects.
 //   cyan = flute (pure sine), magenta = cello (filtered sawtooth, an octave down), gold = bell (sine with the
-//   inharmonic 2.76× overtone real bells have, an octave up).
+//   inharmonic 2.76× overtone real bells have, in the same range as the flute).
 const TIMBRE = [
   { wave: 'sine',     ping: 'sine',     oct: 0,  partial: 2,    pmix: 0.12, level: 1,    bright: 1 },
   { wave: 'sawtooth', ping: 'triangle', oct: -1, partial: 2,    pmix: 0.15, level: 0.55, bright: 0.55 },
-  { wave: 'sine',     ping: 'sine',     oct: 1,  partial: 2.76, pmix: 0.45, level: 0.8,  bright: 1.4 },
+  { wave: 'sine',     ping: 'sine',     oct: 0,  partial: 2.76, pmix: 0.3,  level: 0.8,  bright: 1 },
 ];
 function note(y, vol, dur, oct = 0, tb = 0) {   // pentatonic pitch from vertical position, in color tb's instrument
   if (!AC || !soundOn) return;
