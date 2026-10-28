@@ -22,6 +22,7 @@ needs `https://` or `localhost`, e.g. `npx http-server`.)
 | **Auto** | Repeats your last throw of the selected color, from the same spot and direction, each time that particle fades away or leaves the screen. |
 | **Energy** | Shows each particle's energy and spin. In the trap it shows the allowed energy levels, and **Measure energy** freezes the particle into one of them. |
 | **Entangled pair** | Two particles on two wires sharing one wavefunction. Finding one changes the other. |
+| **3D** | Tilts the field into perspective so each cloud becomes a glowing mountain whose height is the probability. Throwing, looking and drawing all still work. |
 | **Time** | **Rewind** runs time backwards, the speed button picks ¼× to 2×, and the slider jumps to any recent moment. Playing forwards from an earlier moment starts a new timeline. |
 | **Challenges** | Six puzzles in the scene menu: get enough of the cloud into the gold ring using throws, bank shots, tunneling, the energy gate, your gaze and amplifiers. |
 | **Share** | Gives a code (or link) that rebuilds your scene, walls and thrown waves. |

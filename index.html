@@ -142,6 +142,7 @@
   </div>
   <div class="grp">
     <button id="phaseBtn" title="Color by quantum phase (P)">Phase</button>
+    <button id="view3dBtn" title="Tilt the field so the clouds become mountains (D)">3D</button>
     <button id="meterBtn" class="on" title="Show each particle's energy and spin (N)">Energy</button>
     <button id="shareBtn" title="Save or share this setup">Share</button>
     <button id="micBtn" title="Let microphone noise disturb the particles (M)">Mic<span class="lvl"></span></button>
@@ -191,6 +192,8 @@
       and freezes into a pattern that never moves again.</li>
     <li><b>Entangled pair</b>: two particles on two wires. Find one and the other one jumps, no matter how far away it is.
       Try <b>Collide</b>: two particles that start out independent become entangled by bumping into each other.</li>
+    <li><b>3D</b> (<span class="k">D</span>) tilts the field so every cloud becomes a glowing mountain: the taller it is, the more
+      likely the particle is there. Everything still works in 3D: throw, look, hold and draw on the floor.</li>
     <li><b>Time</b>: <b>◀◀ Rewind</b> runs time backwards, the speed button picks ¼× to 2×, and the slider jumps to any moment
       of the last few seconds. Play forwards from an earlier moment and you start a new timeline, so you can rewind and try again.</li>
     <li><b>Challenges</b> (in the scene menu): six puzzles. Get enough of the cloud into the gold ring. On levels with a green pad,
@@ -244,7 +247,7 @@
   <p><span class="k">Space</span> observe · <span class="k">1</span><span class="k">2</span><span class="k">3</span> particle ·
     <span class="k">W</span> walls · <span class="k">E</span> erase · <span class="k">Q</span> play · <span class="k">F</span> fire ·
     <span class="k">P</span> phase · <span class="k">M</span> mic · <span class="k">S</span> sound · <span class="k">K</span> pause ·
-    <span class="k">V</span> spin · <span class="k">G</span> forces · <span class="k">N</span> energy · <span class="k">A</span> auto · <span class="k">R</span> restart level · <span class="k">B</span> rewind · <span class="k">[</span><span class="k">]</span> speed ·
+    <span class="k">V</span> spin · <span class="k">G</span> forces · <span class="k">N</span> energy · <span class="k">A</span> auto · <span class="k">R</span> restart level · <span class="k">B</span> rewind · <span class="k">D</span> 3D · <span class="k">[</span><span class="k">]</span> speed ·
     <span class="k">C</span> clear · <span class="k">H</span> help</p>
 </div></div>
 
@@ -1285,11 +1288,36 @@ function layout() {
   }
   const [a, b, c, d, e, f] = M, det = a * d - b * c;
   Minv = [d / det, -b / det, -c / det, a / det, (c * f - d * e) / det, (b * e - a * f) / det];
+  // 3D view: a pinhole camera looking at the field tilted away from you. Depth z runs from Z1 (near edge)
+  // to Z0 (far edge), so the far edge is drawn Z1/Z0 as wide. The near edge sits at the bottom of the view.
+  const top = A.y + A.h * 0.2, bottom = A.y + A.h * 0.98;
+  cam.k = (bottom - top) / (1 / cam.Z1 - 1 / cam.Z0); cam.hy = bottom - cam.k / cam.Z1;
+  cam.cx = A.x + A.w / 2; cam.wn = A.w * 0.94; cam.hs = A.h * 0.3;
+  if (view3D) S = cam.wn / (W >= H ? LX : LY) * cam.Z1 / ((cam.Z0 + cam.Z1) / 2);   // typical scale, for sizes of rings etc.
   drawBackground();
 }
-const toScreen = (x, y) => [M[0] * x + M[2] * y + M[4], M[1] * x + M[3] * y + M[5]];
-const toPhys = (X, Y) => [Minv[0] * X + Minv[2] * Y + Minv[4], Minv[1] * X + Minv[3] * Y + Minv[5]];
-const vecToPhys = (dX, dY) => [Minv[0] * dX + Minv[2] * dY, Minv[1] * dX + Minv[3] * dY];
+// ---- 3D projection. (u, v) are the field's across/depth fractions: v = 0 at the far edge, 1 at the near edge.
+// Landscape: across = x, depth = y. Portrait: across = y, depth = x, with the long axis running away from you.
+let view3D = false;
+const cam = { Z1: 1, Z0: 2.3, k: 1, hy: 0, cx: 0, wn: 1, hs: 1 };
+const physToUV = (x, y) => W >= H ? [x / LX, y / LY] : [y / LY, 1 - x / LX];
+const uvToPhys = (u, v) => W >= H ? [u * LX, v * LY] : [(1 - v) * LX, u * LY];
+function proj(u, v, h = 0) {
+  const z = cam.Z1 + (1 - v) * (cam.Z0 - cam.Z1);
+  return [cam.cx + (u - 0.5) * cam.wn * cam.Z1 / z, cam.hy + cam.k / z - h * cam.hs * cam.Z1 / z];
+}
+function toScreen(x, y, h = 0) {
+  if (view3D) { const [u, v] = physToUV(x, y); return proj(u, v, h); }
+  return [M[0] * x + M[2] * y + M[4], M[1] * x + M[3] * y + M[5]];
+}
+function toPhys(X, Y) {
+  if (view3D) {                                  // invert the projection onto the floor (h = 0)
+    const z = cam.k / Math.max(1e-6, Y - cam.hy), v = 1 - (z - cam.Z1) / (cam.Z0 - cam.Z1);
+    const u = 0.5 + (X - cam.cx) * z / (cam.wn * cam.Z1);
+    return uvToPhys(u, v);
+  }
+  return [Minv[0] * X + Minv[2] * Y + Minv[4], Minv[1] * X + Minv[3] * Y + Minv[5]];
+}
 // Transform that draws an NX×NY image so that pixel (u, v) lands on physical (u, v·DY).
 function setGridTransform(c) {
   c.setTransform(DPR * M[0], DPR * M[1], DPR * M[2] * DY, DPR * M[3] * DY, DPR * M[4], DPR * M[5]);
@@ -1343,6 +1371,7 @@ let phaseView = false;
 
 // Render |ψ|² into the field image and gather per-particle statistics in the same pass.
 const GAIN = 19;
+const Hgt = new Float32Array(N);         // surface height for the 3D view: the tone-mapped probability, no ripples
 function renderField() {
   const d = fimg.data, act = particles.filter(p => p.active), invDY = 1 / DY;
   for (const p of act) { p._s = 0; p._x = 0; p._y = 0; p._xx = 0; p._yy = 0; p._r = 0; }
@@ -1350,7 +1379,7 @@ function renderField() {
   for (let j = 0; j < NY; j++) {
     const y = (j + 0.5) * DY;
     for (let i = 0; i < NX; i++) {
-      const k = j * NX + i; let r = 0, g = 0, b = 0;
+      const k = j * NX + i; let r = 0, g = 0, b = 0, hh = 0;
       for (let q = 0; q < act.length; q++) {
         const p = act[q], a = p.re[k], c = p.im[k], dd = a * a + c * c;
         p._s += dd; p.cum[k] = p._s;
@@ -1359,6 +1388,7 @@ function renderField() {
         p._x += dd * x; p._y += dd * y; p._xx += dd * x * x; p._yy += dd * y * y;
         if (x > splitX) p._r += dd;
         const amp = Math.sqrt(dd), I = 1 - Math.exp(-Math.sqrt(dd * invDY) * GAIN);
+        hh += I;
         if (phaseView) {
           const h = ((Math.atan2(c, a) / (2 * Math.PI) + 1) % 1 * 256) | 0;
           r += HUE[h * 3] * I; g += HUE[h * 3 + 1] * I; b += HUE[h * 3 + 2] * I;
@@ -1369,6 +1399,7 @@ function renderField() {
         }
       }
       const o = k * 4; d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255;
+      Hgt[k] = Math.min(1.4, hh);
     }
   }
   for (const p of act) {
@@ -1390,6 +1421,8 @@ function render(now) {
   if (scene === 'pair') renderPairField(); else renderField();
   if (wallImgDirty) drawWallImage();
 
+  if (view3D) { ctx.setTransform(DPR, 0, 0, DPR, 0, 0); drawRidges(); }
+  else {
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
   setGridTransform(ctx);
   ctx.globalCompositeOperation = 'lighter';
@@ -1399,6 +1432,7 @@ function render(now) {
   ctx.globalAlpha = 0.75; ctx.drawImage(glow, 0, 0, NX, NY); ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = 'source-over';
   ctx.drawImage(wallCv, 0, 0);
+  }
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
   ctx.globalCompositeOperation = 'lighter';
@@ -1426,6 +1460,7 @@ function renderPairField() {
     const y = (j + 0.5) * DY, f1 = Math.exp(-((y - y1) ** 2) / w2), f2 = Math.exp(-((y - y2) ** 2) / w2);
     for (let i = 0; i < NX; i++) {
       const a = I1[i] * f1, b = I2[i] * f2, o = (j * NX + i) * 4, hot = (a * a + b * b) * 60;
+      Hgt[j * NX + i] = a + b;
       d[o] = c1[0] * a + c2[0] * b + hot; d[o + 1] = c1[1] * a + c2[1] * b + hot; d[o + 2] = c1[2] * a + c2[2] * b + hot; d[o + 3] = 255;
     }
   }
@@ -1517,6 +1552,67 @@ function drawMeter() {
   drawLabel('100', lx + lw, ly + lh + 10, 'rgba(180,200,255,0.6)', 'right', 9);
 }
 
+// 3D height view: the field as a mountain range. Each ridgeline is one row of the grid, drawn far to near;
+// filling under each line hides the rows behind it. Height is the brightness of the 2D picture (so it works
+// for every scene and for Phase view); walls and materials stand up as low strips in their own colors.
+const MAT_COL = { wall: [150, 175, 255], gate: [255, 190, 90], absorb: [170, 110, 255], amp: [110, 255, 160] };
+function cellLook(i, j) {
+  const k = j * NX + i, o = k * 4, d = fimg.data;
+  let r = d[o], g = d[o + 1], b = d[o + 2], h = Hgt[k];
+  const V = Vwall[k], G = Gwall[k];
+  if (V > 0 || G !== 0) {
+    const c = G > 0 ? MAT_COL.absorb : G < 0 ? MAT_COL.amp : V < 0.5 ? MAT_COL.gate : MAT_COL.wall;
+    const wh = V >= 3 ? 0.16 : 0.07;
+    if (h < wh) { r = c[0]; g = c[1]; b = c[2]; h = wh; }
+  }
+  return [r, g, b, h];
+}
+function drawRidges() {
+  const land = W >= H;
+  const lines = land ? NY : NX, along = land ? NX : NY;
+  const lstep = land ? 2 : 3, astep = land ? 2 : 1;
+  const pts = [], cols = [];
+  for (let l = 0; l < lines; l += lstep) {                // far to near
+    let maxH = 0; pts.length = 0; cols.length = 0;
+    for (let a = 0; a < along; a += astep) {
+      const i = land ? a : lines - 1 - l, j = land ? l : a;
+      const [r, g, b, h] = cellLook(i, j);
+      const [u, v] = physToUV(i + 0.5, (j + 0.5) * DY);
+      pts.push(proj(u, v, h)); cols.push([r, g, b, h]); maxH = Math.max(maxH, h);
+    }
+    const [u0, v0] = physToUV(land ? 0.5 : (lines - 1 - l) + 0.5, land ? (l + 0.5) * DY : 0.5 * DY);
+    const [uN, vN] = physToUV(land ? NX - 0.5 : (lines - 1 - l) + 0.5, land ? (l + 0.5) * DY : (NY - 0.5) * DY);
+    const base0 = proj(u0, v0), baseN = proj(uN, vN);
+    // occlude what's behind
+    ctx.beginPath(); ctx.moveTo(base0[0], base0[1]);
+    for (const [x, y] of pts) ctx.lineTo(x, y);
+    ctx.lineTo(baseN[0], baseN[1]); ctx.closePath();
+    ctx.fillStyle = 'rgba(5,8,18,0.94)'; ctx.fill();
+    // the ridge itself, colored along its length
+    const line = new Path2D(); pts.forEach(([x, y], n) => n ? line.lineTo(x, y) : line.moveTo(x, y));
+    const z = cam.Z1 + (1 - physToUV(...(land ? [0, (l + 0.5) * DY] : [lines - 1 - l, 0]))[1]) * (cam.Z0 - cam.Z1), near = cam.Z1 / z;
+    if (maxH < 0.03) {
+      ctx.strokeStyle = 'rgba(120,150,255,0.10)'; ctx.lineWidth = 0.8; ctx.stroke(line); continue;
+    }
+    const grd = ctx.createLinearGradient(pts[0][0], pts[0][1], pts[pts.length - 1][0], pts[pts.length - 1][1]);
+    const every = Math.max(1, Math.floor(pts.length / 24));
+    for (let n = 0; n < pts.length; n += every) {
+      const [r, g, b, h] = cols[n], m = 255 / Math.max(40, r, g, b);
+      grd.addColorStop(n / (pts.length - 1), h < 0.03 ? 'rgba(120,150,255,0.12)' : `rgba(${r * m | 0},${g * m | 0},${b * m | 0},${Math.min(1, 0.25 + h)})`);
+    }
+    ctx.strokeStyle = grd;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.3; ctx.lineWidth = 4 * near; ctx.stroke(line);           // soft glow
+    ctx.globalAlpha = 1; ctx.lineWidth = 1.3 * near; ctx.stroke(line);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+}
+const heightAt = (x, y) => {
+  if (!view3D) return 0;
+  const i = Math.max(0, Math.min(NX - 1, x | 0)), j = Math.max(0, Math.min(NY - 1, (y / DY) | 0));
+  return cellLook(i, j)[3];
+};
+
 // "Possibility dust": fresh random samples from |ψ|² every frame.
 function drawSparkles() {
   if (scene === 'pair' && pair.active) {
@@ -1539,7 +1635,8 @@ function drawSparkles() {
     for (let s = 0; s < n; s++) {
       const u = Math.random() * total; let lo = 0, hi = N - 1;
       while (lo < hi) { const mid = (lo + hi) >> 1; if (cum[mid] < u) lo = mid + 1; else hi = mid; }
-      const [X, Y] = toScreen((lo % NX) + Math.random(), (((lo / NX) | 0) + Math.random()) * DY);
+      const sx = (lo % NX) + Math.random(), sy = (((lo / NX) | 0) + Math.random()) * DY;
+      const [X, Y] = toScreen(sx, sy, heightAt(sx, sy));
       const a = 0.25 + Math.random() * 0.6, sz = 1 + Math.random() * 1.4;
       ctx.fillStyle = `rgba(${(r + 255) >> 1},${(g + 255) >> 1},${(b + 255) >> 1},${a})`;
       ctx.fillRect(X - sz / 2, Y - sz / 2, sz, sz);
@@ -1552,7 +1649,7 @@ function drawParticles() {
     if (!p.active) continue;
     const q = Math.max(0, Math.min(1, 1 - (p.spread - 2.4) / 5.5));
     if (q <= 0) continue;
-    const [X, Y] = toScreen(p.mx, p.my), [r, g, b] = p.col, R = S * (3 + 6 * (1 - q));
+    const [X, Y] = toScreen(p.mx, p.my, heightAt(p.mx, p.my)), [r, g, b] = p.col, R = S * (3 + 6 * (1 - q));
     const grd = ctx.createRadialGradient(X, Y, 0, X, Y, R * 4);
     grd.addColorStop(0, `rgba(255,255,255,${q})`);
     grd.addColorStop(0.18, `rgba(${r},${g},${b},${0.8 * q})`);
@@ -1977,6 +2074,7 @@ function syncButtons() {
   $('#autoBtn').classList.toggle('on', exp.auto);
   $('#peekBtn').classList.toggle('on', exp.watch);
   $('#meterBtn').classList.toggle('on', showMeter);
+  $('#view3dBtn').classList.toggle('on', view3D);
   $('#repeatBtn').classList.toggle('on', autoThrow);
   $('#nextBtn').classList.toggle('on', scene === 'level' && level.won);
   $('#prevBtn').disabled = level.idx === 0; $('#nextBtn').disabled = level.idx === LEVELS.length - 1;
@@ -2032,6 +2130,7 @@ $('#peekBtn').onclick = () => {
 };
 $('#phaseBtn').onclick = () => { phaseView = !phaseView; syncButtons(); };
 $('#meterBtn').onclick = () => { showMeter = !showMeter; syncButtons(); };
+$('#view3dBtn').onclick = () => { view3D = !view3D; layout(); syncButtons(); };
 $('#repeatBtn').onclick = () => {
   autoThrow = !autoThrow; autoWait = 0.4; syncButtons();
   if (autoThrow && !lastThrow[current]) toast('Auto is on: throw a wave and it will come back each time it fades away');
@@ -2081,6 +2180,7 @@ addEventListener('keydown', e => {
   else if (k === 'a') $('#repeatBtn').click();
   else if (k === 'r') $('#restartBtn').click();
   else if (k === 'b') $('#rewindBtn').click();
+  else if (k === 'd') $('#view3dBtn').click();
   else if (k === '[') { speedIdx = Math.max(0, speedIdx - 1); syncButtons(); }
   else if (k === ']') { speedIdx = Math.min(SPEEDS.length - 1, speedIdx + 1); syncButtons(); }
   else if (k === 'f') { audioInit(); fire(); } else if (k === 'p') $('#phaseBtn').click();
@@ -2175,7 +2275,7 @@ layout();
 syncButtons();
 requestAnimationFrame(frame);
 // Exposed for tinkering from the dev console.
-window.QF = { tl, tlStepBack, tlSeek, tlSnap, stepBack, historyEvent, get speed() { return SPEEDS[speedIdx]; }, BRUSH, gotoLevel, goalProb, LEVELS, lvPt, rebuild: rebuildPotential, hasGain: () => hasGain, matCounts: () => { const c = { wall: 0, gate: 0, absorb: 0, amp: 0 }; for (let k = 0; k < N; k++) { if (Gwall[k] > 0) c.absorb++; else if (Gwall[k] < 0) c.amp++; else if (Vwall[k] >= 3) c.wall++; else if (Vwall[k] > 0) c.gate++; } return c; }, pair, pairStep, encodeSetup, decodeSetup, measureEnergy, trapLevels, measureObservables, updateForces, get forces() { return forces; }, set forces(v) { forces = v; forcesDirty = true; }, waveLog, zeno, particles, step, measureAt, observeAll, addPacket, setScene, exp, perf, get DY() { return DY; }, get stepCost() { return stepCost; } };
+window.QF = { toScreen, toPhys, tl, tlStepBack, tlSeek, tlSnap, stepBack, historyEvent, get speed() { return SPEEDS[speedIdx]; }, BRUSH, gotoLevel, goalProb, LEVELS, lvPt, rebuild: rebuildPotential, hasGain: () => hasGain, matCounts: () => { const c = { wall: 0, gate: 0, absorb: 0, amp: 0 }; for (let k = 0; k < N; k++) { if (Gwall[k] > 0) c.absorb++; else if (Gwall[k] < 0) c.amp++; else if (Vwall[k] >= 3) c.wall++; else if (Vwall[k] > 0) c.gate++; } return c; }, pair, pairStep, encodeSetup, decodeSetup, measureEnergy, trapLevels, measureObservables, updateForces, get forces() { return forces; }, set forces(v) { forces = v; forcesDirty = true; }, waveLog, zeno, particles, step, measureAt, observeAll, addPacket, setScene, exp, perf, get DY() { return DY; }, get stepCost() { return stepCost; } };
 </script>
 </body>
 </html>
