@@ -22,6 +22,7 @@ needs `https://` or `localhost`, e.g. `npx http-server`.)
 | **Auto** | Repeats your last throw of the selected color, from the same spot and direction, each time that particle fades away or leaves the screen. |
 | **Energy** | Shows each particle's energy and spin. In the trap it shows the allowed energy levels, and **Measure energy** freezes the particle into one of them. |
 | **Entangled pair** | Two particles on two wires sharing one wavefunction. Finding one changes the other. |
+| **Time** | **Rewind** runs time backwards, the speed button picks ¼× to 2×, and the slider jumps to any recent moment. Playing forwards from an earlier moment starts a new timeline. |
 | **Challenges** | Six puzzles in the scene menu: get enough of the cloud into the gold ring using throws, bank shots, tunneling, the energy gate, your gaze and amplifiers. |
 | **Share** | Gives a code (or link) that rebuilds your scene, walls and thrown waves. |
 | **Mic** | Noise shakes the clouds, and a clap collapses them. |
@@ -43,6 +44,9 @@ Press **?** in the app for the full explanation.
 - **Double slit:** the screen records the probability flux absorbed at the right edge, and each run samples one hit from it.
   "Peek" is a which-path measurement (upper or lower half) just after the slits.
 - **Boundaries** are absorbing layers, so probability that leaves the box is gone.
+- **Rewind:** the inverse of a step is the same split-operator step with every phase conjugated, so running backwards
+  is exact (there and back agree to 10⁻¹⁰). Measurement, absorption and gain aren't reversible, so exact snapshots are
+  kept before and after each such event and every 20 time units, and rewinding switches to them as it passes.
 - **Special walls:** an energy gate is a thick barrier of height 0.35, so only waves with |k| > 0.84 get over.
   Absorbers and amplifiers are an imaginary potential V − iΓ/2 (decay for Γ > 0, gain for Γ < 0). After gain the
   wavefunction is scaled back to total probability 1, so the amplified branch gains weight instead of creating particles.

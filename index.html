@@ -69,7 +69,8 @@
     background: rgba(0, 0, 0, .35); border: 1px solid var(--line); border-radius: 8px; padding: 8px; word-break: break-all; resize: none; }
   #loadCode { flex: 1; width: auto; min-width: 0; font-size: 13px; }
   #copyMsg, #loadMsg { color: var(--dim); font-size: 13px; }
-  button:disabled, select:disabled { opacity: .35; cursor: default; }
+  button:disabled, select:disabled, input:disabled { opacity: .35; cursor: default; }
+  #timeSlider { width: 110px; accent-color: var(--accent); margin: 0 6px; }
   button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   @media (max-width: 640px) {
     #title { display: none; }
@@ -133,13 +134,18 @@
     <button id="restartBtn" title="Start this challenge again (R)">Restart</button>
     <button id="nextBtn" title="Next challenge">Next ▸</button>
   </div>
+  <div class="grp" id="timeGrp">
+    <button id="rewindBtn" title="Run time backwards (B)">◀◀ Rewind</button>
+    <button id="pauseBtn" title="Pause / resume (K)">Pause</button>
+    <button id="speedBtn" title="Simulation speed ([ slower, ] faster)">1×</button>
+    <input type="range" id="timeSlider" min="0" max="1" step="0.5" value="1" aria-label="Timeline: drag to go back in time">
+  </div>
   <div class="grp">
     <button id="phaseBtn" title="Color by quantum phase (P)">Phase</button>
     <button id="meterBtn" class="on" title="Show each particle's energy and spin (N)">Energy</button>
     <button id="shareBtn" title="Save or share this setup">Share</button>
     <button id="micBtn" title="Let microphone noise disturb the particles (M)">Mic<span class="lvl"></span></button>
     <button id="soundBtn" class="on" title="Sound effects (S)">Sound</button>
-    <button id="pauseBtn" title="Pause / resume (K)">Pause</button>
     <button id="helpBtn" title="What is going on? (H)">?</button>
   </div>
 </div>
@@ -185,6 +191,8 @@
       and freezes into a pattern that never moves again.</li>
     <li><b>Entangled pair</b>: two particles on two wires. Find one and the other one jumps, no matter how far away it is.
       Try <b>Collide</b>: two particles that start out independent become entangled by bumping into each other.</li>
+    <li><b>Time</b>: <b>◀◀ Rewind</b> runs time backwards, the speed button picks ¼× to 2×, and the slider jumps to any moment
+      of the last few seconds. Play forwards from an earlier moment and you start a new timeline, so you can rewind and try again.</li>
     <li><b>Challenges</b> (in the scene menu): six puzzles. Get enough of the cloud into the gold ring. On levels with a green pad,
       every throw starts from the pad and your drag only sets direction and speed. <b>Restart</b> (<span class="k">R</span>) keeps what you drew.</li>
     <li><b>Share</b> gives you a code (or link) that rebuilds your walls and waves for someone else.</li>
@@ -222,6 +230,10 @@
     <li>Entangled pair: two particles on a line need one wavefunction <code>ψ(x₁, x₂)</code> (the inset). It evolves under
       <code>H = p₁²/2 + p₂²/2 + V(x₁−x₂)</code> with the same split-operator method on a 128×128 grid. The clouds on the wires are the marginals
       <code>ρ₁(x₁) = ∫|ψ|² dx₂</code>. Measuring one coordinate updates the joint state, so the other marginal changes when they're correlated.</li>
+    <li>Rewind: the inverse of one step is the same three factors with every phase flipped,
+      <code>ψ ← P*·F⁻¹[K*·F[P*·ψ]]</code>, so the backwards run is exact (back and forth agree to 10⁻¹⁰). Measurement, absorption and gain
+      can't be undone that way, so exact snapshots are kept just before and after every such event and every 20 time units;
+      rewinding switches to them as it passes, which un-collapses particles and brings absorbed waves back.</li>
     <li>Special walls: an energy gate is a thick barrier of height 0.35, so only waves with <code>k²/2 &gt; 0.35</code> (|k| &gt; 0.84) get over.
       Absorbers and amplifiers are an imaginary potential <code>V − iΓ/2</code>: amplitude changes by <code>e<sup>−Γt/2</sup></code>, decay for Γ &gt; 0,
       gain for Γ &lt; 0. A single particle can't be more than 100% likely, so after gain ψ is scaled back to Σ|ψ|² = 1: the amplified branch
@@ -232,7 +244,7 @@
   <p><span class="k">Space</span> observe · <span class="k">1</span><span class="k">2</span><span class="k">3</span> particle ·
     <span class="k">W</span> walls · <span class="k">E</span> erase · <span class="k">Q</span> play · <span class="k">F</span> fire ·
     <span class="k">P</span> phase · <span class="k">M</span> mic · <span class="k">S</span> sound · <span class="k">K</span> pause ·
-    <span class="k">V</span> spin · <span class="k">G</span> forces · <span class="k">N</span> energy · <span class="k">A</span> auto · <span class="k">R</span> restart level ·
+    <span class="k">V</span> spin · <span class="k">G</span> forces · <span class="k">N</span> energy · <span class="k">A</span> auto · <span class="k">R</span> restart level · <span class="k">B</span> rewind · <span class="k">[</span><span class="k">]</span> speed ·
     <span class="k">C</span> clear · <span class="k">H</span> help</p>
 </div></div>
 
@@ -386,6 +398,7 @@ const Vbase = new Float64Array(N), Vwall = new Float64Array(N), Vtot = new Float
 const Gwall = new Float64Array(N), Damp = new Float64Array(N).fill(1);
 let hasGain = false;
 const Pc = new Float64Array(N), Ps = new Float64Array(N);
+const PcU = new Float64Array(N), PsU = new Float64Array(N);   // same phases without absorption/gain, for rewinding
 let potentialDirty = true, wallVersion = 0;
 const noiseWaves = Array.from({ length: 6 }, () => {
   const a = Math.random() * Math.PI * 2, k = 0.08 + Math.random() * 0.14;
@@ -411,7 +424,8 @@ function rebuildPotential() {
         V += noiseAmp * s * 0.41;
       }
       const ph = -V * DT / 2, damp = Gwall[k] ? Math.exp(-Gwall[k] * DT / 4) : 1;   // applied twice per step
-      Vtot[k] = V; Damp[k] = damp; Pc[k] = Math.cos(ph) * damp; Ps[k] = Math.sin(ph) * damp;
+      Vtot[k] = V; Damp[k] = damp; PcU[k] = Math.cos(ph); PsU[k] = Math.sin(ph);
+      Pc[k] = PcU[k] * damp; Ps[k] = PsU[k] * damp;
     }
   }
   noiseWasOn = useNoise;
@@ -494,6 +508,91 @@ function step(p) {
     }
     re[k] = ar * m; im[k] = br * m;
   }
+}
+
+// ---------------------------------------------------------------- time travel: slow motion & rewind
+// The Schrödinger equation runs backwards as well as forwards: the inverse of one step is the same three
+// factors with every phase flipped, ψ ← P*·F⁻¹[K*·F[P*·ψ]]. Rewinding uses exactly that.
+// Some things can't be undone that way: a measurement (collapse is not unitary), absorption at the edges and
+// in absorbers, gain, and anything you add. So we also keep exact snapshots: one just before and one just
+// after every such event, plus one every SNAP_EVERY time units. Rewinding switches to the stored state each
+// time it reaches a snapshot, so collapsed particles un-collapse and absorbed waves come back.
+// If you rewind and then play forwards, history branches: the old future is dropped.
+const SNAP_EVERY = 20, HISTORY = 900, MAX_SNAPS = 90;
+const tl = { t: 0, max: 0, lastSnap: 0, snaps: [], rewinding: false, atPre: null, seekTo: null };
+let speedIdx = 2;
+const SPEEDS = [0.25, 0.5, 1, 2];
+const timeAllowed = () => scene !== 'slit' && scene !== 'pair';
+function stepBack(p) {
+  const re = p.re, im = p.im;
+  const kick = () => { for (let k = 0; k < N; k++) { const a = re[k], b = im[k], c = PcU[k], s = -PsU[k]; re[k] = a * c - b * s; im[k] = a * s + b * c; } };
+  kick(); fft2(re, im, false);
+  for (let k = 0; k < N; k++) { const a = re[k], b = im[k], c = Kc[k], s = -Ks[k]; re[k] = a * c - b * s; im[k] = a * s + b * c; }
+  fft2(re, im, true); kick();
+}
+function tlSnap() {
+  if (!timeAllowed()) return;
+  tl.snaps.push({ t: tl.t, parts: particles.map(p => p.active ? { re: Float32Array.from(p.re), im: Float32Array.from(p.im) } : null) });
+  tl.lastSnap = tl.t;
+  while (tl.snaps.length > MAX_SNAPS || (tl.snaps.length > 2 && tl.snaps[0].t < tl.t - HISTORY)) tl.snaps.shift();
+}
+function tlRestore(sn) {
+  sn.parts.forEach((st, i) => {
+    const p = particles[i];
+    if (!st) { p.clear(); return; }
+    for (let k = 0; k < N; k++) { p.re[k] = st.re[k]; p.im[k] = st.im[k]; }
+    p.active = true; p.norm = p.sumSq();
+  });
+}
+const snapsAt = t => tl.snaps.filter(s => Math.abs(s.t - t) < 1e-6);
+function tlReset() { tl.t = 0; tl.max = 0; tl.lastSnap = 0; tl.snaps = []; tl.rewinding = false; tl.atPre = null; tlSnap(); }
+// Playing forwards (or changing something) from an earlier moment: forget the old future.
+function tlBranch() {
+  tl.rewinding = false;
+  if (tl.t < tl.max - 1e-6 || tl.atPre !== null) {
+    const keepAtNow = tl.atPre === tl.t ? 1 : Infinity;   // undone event: drop its "after" snapshot
+    let seen = 0;
+    tl.snaps = tl.snaps.filter(s => s.t < tl.t - 1e-6 || (Math.abs(s.t - tl.t) < 1e-6 && seen++ < keepAtNow));
+    tl.max = tl.t;
+  }
+  tl.atPre = null;
+}
+// Wrap anything that changes the state by hand, so rewinding can undo it exactly.
+function historyEvent(fn) {
+  if (!timeAllowed()) return fn();
+  tlBranch(); tlSnap();
+  const r = fn();
+  tlSnap();
+  return r;
+}
+// One step back in time. Returns false at the start of the recorded history.
+function tlStepBack() {
+  const first = tl.snaps[0];
+  if (!first || tl.t <= first.t + 1e-6) {
+    if (first && tl.atPre === null) { tlRestore(first); tl.atPre = tl.t; }
+    return false;
+  }
+  const here = snapsAt(tl.t);
+  if (here.length && tl.atPre !== tl.t) { tlRestore(here[0]); tl.atPre = tl.t; }   // undo what happened at this moment
+  for (const p of particles) if (p.active) stepBack(p);
+  tl.t -= DT; tl.atPre = null; simTime -= DT;
+  const there = snapsAt(tl.t);
+  if (there.length) tlRestore(there[there.length - 1]);   // exact state, including anything absorbed since
+  return true;
+}
+// Jump to time `target` (dragging the timeline): restore the last snapshot at or before it, then step forwards.
+function tlSeek(target) {
+  target = Math.max(tl.snaps.length ? tl.snaps[0].t : 0, Math.min(tl.max, target));
+  target = Math.round(target / DT) * DT;
+  let sn = null; for (const s of tl.snaps) if (s.t <= target + 1e-6) sn = s;
+  if (!sn) return;
+  if (potentialDirty) rebuildPotential();
+  // stepping on from where we are is cheaper than going back to a snapshot, when it's valid
+  if (!(target >= tl.t - 1e-6 && tl.t >= sn.t - 1e-6 && tl.atPre === null)) { tlRestore(sn); tl.t = sn.t; }
+  tl.atPre = null;
+  const act = particles.filter(p => p.active);
+  while (tl.t < target - 1e-6) { for (const p of act) step(p); tl.t += DT; }
+  if (hasGain) for (const p of act) { const s2 = p.sumSq(); if (s2 > 1) p.scale(1 / Math.sqrt(s2)); }
 }
 
 // ---------------------------------------------------------------- push & pull between particles
@@ -630,6 +729,9 @@ function observeParticle(p) {
 }
 function observeAll() {
   if (scene === 'pair') { if (pair.active) pairObserve(); else toast('Press Emit pair or Collide first'); return; }
+  historyEvent(observeAllNow);
+}
+function observeAllNow() {
   let any = false;
   for (const p of particles) if (p.active) { observeParticle(p); any = true; }
   if (!any) toast('Nothing to observe. Drag to throw a wave!');
@@ -767,6 +869,7 @@ function setWallRect(x0, x1, y0, y1, V) {
 }
 function wallsChanged() {
   potentialDirty = true; wallVersion++; wallImgDirty = true;
+  if (!painting) tlReset();   // drawing restarts history once the stroke ends (see endPress)
   hasGain = false; for (let k = 0; k < N; k++) if (Gwall[k] < 0) { hasGain = true; break; }
 }
 
@@ -856,6 +959,7 @@ function setScene(name, restore = null) {
   updateHint();
   layout();   // the toolbar and hint may have changed height
   wallsChanged();
+  tlReset();
 }
 
 function fire() {
@@ -1345,7 +1449,7 @@ function drawPairOverlay() {
     jd[o] = 40 + 200 * v; jd[o + 1] = 50 + 190 * v; jd[o + 2] = 80 + 175 * v; jd[o + 3] = 255;
   }
   jctx.putImageData(jimg, 0, 0);
-  const size = Math.round(W >= H ? Math.min(170, H * 0.24) : Math.min(116, W * 0.3)), x0 = W >= H ? W - size - 18 : 14, y0 = W >= H ? 64 : 60;
+  const size = Math.round(W >= H ? Math.min(170, H * 0.24) : Math.min(116, W * 0.3)), x0 = W >= H ? W - size - 18 : 14, y0 = W >= H ? 64 : $('#hint').getBoundingClientRect().bottom + 22;
   ctx.imageSmoothingEnabled = true; ctx.drawImage(jointCv, x0, y0, size, size);
   ctx.strokeStyle = 'rgba(180,200,255,0.4)'; ctx.strokeRect(x0 - 0.5, y0 - 0.5, size + 1, size + 1);
   ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(x0, y0 + size); ctx.lineTo(x0 + size, y0); ctx.stroke(); ctx.setLineDash([]);
@@ -1381,7 +1485,7 @@ function drawMeter() {
   const act = particles.filter(p => p.active && p.obs);
   if (!act.length) return;
   const trap = scene === 'trap', unit = trap ? TRAP_W : 1, w = trap ? 260 : 210, rowH = 19;
-  const x0 = 16, y0 = W >= H ? 44 : 50, h = 26 + act.length * rowH + (trap ? 78 : 0);
+  const x0 = 16, y0 = W >= H ? 44 : $('#hint').getBoundingClientRect().bottom + 6, h = 26 + act.length * rowH + (trap ? 78 : 0);
   ctx.fillStyle = 'rgba(10,14,30,0.6)'; ctx.strokeStyle = 'rgba(140,170,255,0.18)';
   ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x0, y0, w, h, 10) : ctx.rect(x0, y0, w, h); ctx.fill(); ctx.stroke();
   drawLabel('ENERGY' + (trap ? '  (units of ħω)' : ''), x0 + 12, y0 + 13, 'rgba(111,227,255,0.85)', 'left', 10);
@@ -1620,11 +1724,11 @@ cv.addEventListener('pointermove', e => {
   if (press && press.mode === 'pending' && Math.hypot(e.clientX - press.X, e.clientY - press.Y) > 9) press.mode = 'launch';
 });
 function endPress(e) {
-  if (painting) { painting = null; return; }
+  if (painting) { painting = null; tlReset(); return; }
   if (!press) return;
   lastInput = performance.now();
-  if (press.mode === 'pending') click(press.px, press.py);
-  else if (press.mode === 'launch') launch(press.px, press.py, pointer.x, pointer.y);
+  if (press.mode === 'pending') { const { px, py } = press; historyEvent(() => click(px, py)); }
+  else if (press.mode === 'launch') { const { px, py } = press; historyEvent(() => launch(px, py, pointer.x, pointer.y)); }
   press = null;
   if (e.pointerType !== 'mouse') pointer.inside = false;
 }
@@ -1673,7 +1777,7 @@ const zeno = { on: false, x: 0, y: 0 };
 function zenoTick(simDt) {
   if (press && press.mode === 'pending' && scene !== 'pair' && performance.now() - press.t > 200) {
     press.mode = 'zeno'; zeno.x = pointer.x; zeno.y = pointer.y;
-    for (const p of particles) if (p.active) measureAt(p, zeno.x, zeno.y, true);
+    historyEvent(() => { for (const p of particles) if (p.active) measureAt(p, zeno.x, zeno.y, true); });
   }
   const on = !!press && press.mode === 'zeno' && pointer.inside;
   if (on !== zeno.on) { zeno.on = on; potentialDirty = true; }
@@ -1866,7 +1970,10 @@ function syncButtons() {
   $('#phaseBtn').classList.toggle('on', phaseView);
   $('#micBtn').classList.toggle('on', !!mic);
   $('#soundBtn').classList.toggle('on', soundOn);
-  $('#pauseBtn').classList.toggle('on', paused); $('#pauseBtn').textContent = paused ? 'Resume' : 'Pause';
+  $('#pauseBtn').classList.toggle('on', paused); $('#pauseBtn').textContent = paused ? 'Play' : 'Pause';
+  $('#rewindBtn').classList.toggle('on', tl.rewinding);
+  $('#speedBtn').textContent = ['¼×', '½×', '1×', '2×'][speedIdx]; $('#speedBtn').classList.toggle('on', speedIdx !== 2);
+  for (const id of ['#rewindBtn', '#timeSlider']) $(id).disabled = !timeAllowed();
   $('#autoBtn').classList.toggle('on', exp.auto);
   $('#peekBtn').classList.toggle('on', exp.watch);
   $('#meterBtn').classList.toggle('on', showMeter);
@@ -1898,13 +2005,14 @@ document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => setTool(
 $('#drawSel').onchange = e => { setTool(e.target.value || 'play'); e.target.blur(); };
 $('#observeBtn').onclick = () => { audioInit(); observeAll(); };
 $('#clearBtn').onclick = clearAll;
-function clearAll() {
+function clearAll() { historyEvent(clearAllNow); }
+function clearAllNow() {
   for (const p of particles) p.clear();
   waveLog.length = 0; pair.active = false;
   marks.length = 0; exp.hits.length = 0; exp.hist.fill(0); exp.queue.length = 0; exp.running = false; exp.readout = null;
 }
 $('#scene').onchange = e => { setScene(e.target.value); e.target.blur(); };
-$('#fireBtn').onclick = () => { audioInit(); if (scene === 'level' && LV().fire) { LV().fire(); swoosh(0.9); } else fire(); };
+$('#fireBtn').onclick = () => { audioInit(); historyEvent(() => { if (scene === 'level' && LV().fire) { LV().fire(); swoosh(0.9); } else fire(); }); };
 $('#prevBtn').onclick = () => gotoLevel(level.idx - 1);
 $('#nextBtn').onclick = () => gotoLevel(level.idx + 1);
 $('#restartBtn').onclick = () => {
@@ -1913,7 +2021,7 @@ $('#restartBtn').onclick = () => {
   for (const p of particles) p.clear();
   level.throws = 0; level.won = false; level.best = 0; marks.length = 0;
   if (LV().start) LV().start();
-  Vwall.set(keepV); Gwall.set(keepG); syncButtons();
+  Vwall.set(keepV); Gwall.set(keepG); syncButtons(); tlReset();
 };
 $('#autoBtn').onclick = () => { exp.auto = !exp.auto; exp.wait = 0; syncButtons(); };
 $('#moreBtn').onclick = () => { audioInit(); addHundred(); };
@@ -1933,12 +2041,31 @@ $('#forceBtn').onclick = () => {
   forces = (forces + 1) % 3; forcesDirty = true; syncButtons();
   if (forces) toast(forces === 1 ? 'Different colors now push each other away' : 'Different colors now pull on each other');
 };
-$('#energyBtn').onclick = () => { audioInit(); let any = false; for (const p of particles) if (p.active) { measureEnergy(p); any = true; } if (!any) toast('Nothing in the trap. Drag to throw a wave in.'); };
+$('#energyBtn').onclick = () => { audioInit(); let any = false; historyEvent(() => { for (const p of particles) if (p.active) { measureEnergy(p); any = true; } }); if (!any) toast('Nothing in the trap. Drag to throw a wave in.'); };
 $('#emitBtn').onclick = () => { audioInit(); marks.length = 0; emitPair(); };
 $('#collideBtn').onclick = () => { audioInit(); marks.length = 0; collidePair(); };
 $('#micBtn').onclick = toggleMic;
 $('#soundBtn').onclick = () => { soundOn = !soundOn; if (master) master.gain.value = soundOn ? 0.5 : 0; syncButtons(); };
-$('#pauseBtn').onclick = () => { paused = !paused; syncButtons(); };
+$('#pauseBtn').onclick = () => { paused = !paused; tl.rewinding = false; syncButtons(); };
+$('#rewindBtn').onclick = () => {
+  if (!timeAllowed()) return;
+  tl.rewinding = !tl.rewinding; if (tl.rewinding) paused = false; syncButtons();
+};
+$('#speedBtn').onclick = () => { speedIdx = (speedIdx + 1) % SPEEDS.length; syncButtons(); };
+$('#timeSlider').addEventListener('input', e => {
+  if (!timeAllowed()) return;
+  paused = true; tl.rewinding = false; syncButtons();
+  tl.seekTo = +e.target.value;           // done in the frame loop, at most once per frame
+});
+let sliderBusy = false;
+$('#timeSlider').addEventListener('pointerdown', () => { sliderBusy = true; });
+addEventListener('pointerup', () => { sliderBusy = false; });
+// Keep the timeline slider in step with the simulation: it spans the recorded history.
+function updateTimeline() {
+  if (sliderBusy) return;
+  const el = $('#timeSlider'), lo = tl.snaps.length ? tl.snaps[0].t : 0;
+  el.min = lo; el.max = Math.max(lo + DT, tl.max); el.value = tl.t;
+}
 $('#helpBtn').onclick = () => $('#help').classList.add('show');
 $('#helpClose').onclick = () => $('#help').classList.remove('show');
 $('#help').onclick = e => { if (e.target.id === 'help') $('#help').classList.remove('show'); };
@@ -1953,6 +2080,9 @@ addEventListener('keydown', e => {
   else if (k === 'v') $('#spinBtn').click(); else if (k === 'g') $('#forceBtn').click(); else if (k === 'n') $('#meterBtn').click();
   else if (k === 'a') $('#repeatBtn').click();
   else if (k === 'r') $('#restartBtn').click();
+  else if (k === 'b') $('#rewindBtn').click();
+  else if (k === '[') { speedIdx = Math.max(0, speedIdx - 1); syncButtons(); }
+  else if (k === ']') { speedIdx = Math.min(SPEEDS.length - 1, speedIdx + 1); syncButtons(); }
   else if (k === 'f') { audioInit(); fire(); } else if (k === 'p') $('#phaseBtn').click();
   else if (k === 'm') toggleMic(); else if (k === 's') $('#soundBtn').click(); else if (k === 'k') $('#pauseBtn').click();
   else if (k === 'c') clearAll(); else if (k === 'h' || k === '?') $('#help').classList.toggle('show');
@@ -1963,7 +2093,8 @@ addEventListener('resize', layout);
 let last = performance.now(), acc = 0, stepCost = 2, frameNo = 0;   // stepCost: ms per particle-step, measured
 const perf = { render: 0, frame: 0 };
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  // the first frame's timestamp can be a little earlier than `last` was taken, so never let dt go negative
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
   updateMic(dt);
   if (noiseAmp > 0.01 || noiseWasOn) potentialDirty = true;
 
@@ -1971,28 +2102,37 @@ function frame(now) {
     slowmo = Math.max(0, slowmo - dt / 1.8);
     const timeScale = 1 - 0.85 * Math.min(1, slowmo * 1.4);
     const boost = exp.mode === 'slit' && exp.auto ? 2.6 : 1;
-    acc += dt * SIM_SPEED * timeScale * boost;
+    acc += dt * SIM_SPEED * timeScale * boost * SPEEDS[speedIdx];
     const act = scene === 'pair' ? [] : particles.filter(p => p.active);
     const budget = scene === 'pair' ? 8 : Math.max(1, Math.floor(14 / (stepCost * Math.max(1, act.length))));
-    zenoTick(dt * SIM_SPEED * timeScale);
+    if (!tl.rewinding) zenoTick(dt * SIM_SPEED * timeScale * SPEEDS[speedIdx]);
     let steps = Math.floor(acc / DT);
     if (steps > budget) { steps = budget; acc = 0; } else acc -= steps * DT;
     if (potentialDirty) rebuildPotential();
     if ((forces || forcesDirty) && (forcesDirty || frameNo % 2 === 0)) { updateForces(); forcesDirty = false; }
     if (scene === 'pair' && pair.active) for (let s = 0; s < steps; s++) pairStep();
+    if (tl.rewinding) {
+      let s = 0;
+      for (; s < steps; s++) if (!tlStepBack()) break;
+      if (s < steps) { tl.rewinding = false; paused = true; syncButtons(); toast('Start of the recorded history'); }
+      steps = 0;
+    } else if (steps > 0 && timeAllowed() && tl.t < tl.max - 1e-6) tlBranch();
     if (steps > 0 && act.length) {
       const t0 = performance.now();
       for (let s = 0; s < steps; s++) {
         for (const p of act) step(p);
-        simTime += DT; exp.t += DT;
+        simTime += DT; exp.t += DT; tl.t += DT; tl.max = Math.max(tl.max, tl.t);
+        if (tl.t - tl.lastSnap >= SNAP_EVERY - 1e-6) tlSnap();
         if (exp.watch && exp.running && !exp.watched && exp.t >= exp.tWatch) whichPath();
       }
       stepCost = 0.9 * stepCost + 0.1 * (performance.now() - t0) / (steps * act.length);
       // Gain can push Σ|ψ|² past 1. A particle can't be more than certainly here, so scale back down:
       // the amplified path ends up more likely than the others, rather than creating extra particles.
       if (hasGain) for (const p of act) { const s2 = p.sumSq(); if (s2 > 1) p.scale(1 / Math.sqrt(s2)); }
-    } else { simTime += steps * DT; exp.t += steps * DT; }
+    } else { simTime += steps * DT; exp.t += steps * DT; tl.t += steps * DT; tl.max = Math.max(tl.max, tl.t); }
   }
+  if (tl.seekTo !== null) { tlSeek(tl.seekTo); tl.seekTo = null; }
+  updateTimeline();
   updateExperiment(paused ? 0 : dt);
   if (scene === 'level') checkLevel();
   // energy meter: refresh one particle every few frames (each needs its own FFT)
@@ -2014,7 +2154,7 @@ function frame(now) {
   if (autoThrow && !paused && scene !== 'pair') {
     const p = particles[current], L = lastThrow[current];
     if (p.active || !L) autoWait = 0.4;
-    else if ((autoWait -= dt) <= 0) { addWave(p, L.x, L.y, L.kx, L.ky, PACKET_SIGMA, PACKET_SIGMA, L.m); swoosh(Math.hypot(L.kx, L.ky)); autoWait = 0.4; }
+    else if (!tl.rewinding && (autoWait -= dt) <= 0) { historyEvent(() => addWave(p, L.x, L.y, L.kx, L.ky, PACKET_SIGMA, PACKET_SIGMA, L.m)); swoosh(Math.hypot(L.kx, L.ky)); autoWait = 0.4; }
   }
   const tr = performance.now();
   render(now);
@@ -2035,7 +2175,7 @@ layout();
 syncButtons();
 requestAnimationFrame(frame);
 // Exposed for tinkering from the dev console.
-window.QF = { BRUSH, gotoLevel, goalProb, LEVELS, lvPt, rebuild: rebuildPotential, hasGain: () => hasGain, matCounts: () => { const c = { wall: 0, gate: 0, absorb: 0, amp: 0 }; for (let k = 0; k < N; k++) { if (Gwall[k] > 0) c.absorb++; else if (Gwall[k] < 0) c.amp++; else if (Vwall[k] >= 3) c.wall++; else if (Vwall[k] > 0) c.gate++; } return c; }, pair, pairStep, encodeSetup, decodeSetup, measureEnergy, trapLevels, measureObservables, updateForces, get forces() { return forces; }, set forces(v) { forces = v; forcesDirty = true; }, waveLog, zeno, particles, step, measureAt, observeAll, addPacket, setScene, exp, perf, get DY() { return DY; }, get stepCost() { return stepCost; } };
+window.QF = { tl, tlStepBack, tlSeek, tlSnap, stepBack, historyEvent, get speed() { return SPEEDS[speedIdx]; }, BRUSH, gotoLevel, goalProb, LEVELS, lvPt, rebuild: rebuildPotential, hasGain: () => hasGain, matCounts: () => { const c = { wall: 0, gate: 0, absorb: 0, amp: 0 }; for (let k = 0; k < N; k++) { if (Gwall[k] > 0) c.absorb++; else if (Gwall[k] < 0) c.amp++; else if (Vwall[k] >= 3) c.wall++; else if (Vwall[k] > 0) c.gate++; } return c; }, pair, pairStep, encodeSetup, decodeSetup, measureEnergy, trapLevels, measureObservables, updateForces, get forces() { return forces; }, set forces(v) { forces = v; forcesDirty = true; }, waveLog, zeno, particles, step, measureAt, observeAll, addPacket, setScene, exp, perf, get DY() { return DY; }, get stepCost() { return stepCost; } };
 </script>
 </body>
 </html>
