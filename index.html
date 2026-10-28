@@ -20,9 +20,9 @@
     font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-user-select: none; user-select: none; }
   canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; cursor: crosshair; }
 
-  #hint { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); padding: 7px 14px; border-radius: 999px;
+  #hint { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); padding: 7px 14px; border-radius: 16px;
     background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    color: var(--dim); white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+    color: var(--dim); max-width: min(760px, calc(100vw - 32px)); width: max-content; text-align: center; text-wrap: balance; pointer-events: none;
     transition: opacity .4s; }
   #hint b { color: var(--text); font-weight: 600; }
   #title { position: fixed; top: 16px; left: 18px; font-weight: 700; letter-spacing: .14em; font-size: 12px; color: var(--accent);
@@ -118,6 +118,7 @@
       <option value="trap">Harmonic trap</option>
       <option value="stadium">Stadium</option>
       <option value="pair">Entangled pair</option>
+      <option value="level">Challenges</option>
     </select>
   </div>
   <div class="grp" id="expGrp">
@@ -128,6 +129,9 @@
     <button id="energyBtn" title="Measure the energy of every particle in the trap">Measure energy</button>
     <button id="emitBtn" title="Create two particles at the centre that fly apart">Emit pair</button>
     <button id="collideBtn" title="Throw two separate particles at each other">Collide</button>
+    <button id="prevBtn" title="Previous challenge">◂ Prev</button>
+    <button id="restartBtn" title="Start this challenge again (R)">Restart</button>
+    <button id="nextBtn" title="Next challenge">Next ▸</button>
   </div>
   <div class="grp">
     <button id="phaseBtn" title="Color by quantum phase (P)">Phase</button>
@@ -181,6 +185,8 @@
       and freezes into a pattern that never moves again.</li>
     <li><b>Entangled pair</b>: two particles on two wires. Find one and the other one jumps, no matter how far away it is.
       Try <b>Collide</b>: two particles that start out independent become entangled by bumping into each other.</li>
+    <li><b>Challenges</b> (in the scene menu): six puzzles. Get enough of the cloud into the gold ring. On levels with a green pad,
+      every throw starts from the pad and your drag only sets direction and speed. <b>Restart</b> (<span class="k">R</span>) keeps what you drew.</li>
     <li><b>Share</b> gives you a code (or link) that rebuilds your walls and waves for someone else.</li>
     <li><b>Mic</b>: noise shakes the clouds (the environment disturbing them). A loud clap collapses everything.</li>
   </ul>
@@ -226,7 +232,7 @@
   <p><span class="k">Space</span> observe · <span class="k">1</span><span class="k">2</span><span class="k">3</span> particle ·
     <span class="k">W</span> walls · <span class="k">E</span> erase · <span class="k">Q</span> play · <span class="k">F</span> fire ·
     <span class="k">P</span> phase · <span class="k">M</span> mic · <span class="k">S</span> sound · <span class="k">K</span> pause ·
-    <span class="k">V</span> spin · <span class="k">G</span> forces · <span class="k">N</span> energy · <span class="k">A</span> auto ·
+    <span class="k">V</span> spin · <span class="k">G</span> forces · <span class="k">N</span> energy · <span class="k">A</span> auto · <span class="k">R</span> restart level ·
     <span class="k">C</span> clear · <span class="k">H</span> help</p>
 </div></div>
 
@@ -260,7 +266,8 @@ function viewArea() {
   const W = innerWidth, H = innerHeight;
   if (W >= H) return { x: 0, y: 0, w: W, h: H };
   const top = document.getElementById('bar').getBoundingClientRect().top;
-  return { x: 0, y: 46, w: W, h: Math.max(H * 0.5, top - 52) };
+  const hintBottom = document.getElementById('hint').getBoundingClientRect().bottom + 6;
+  return { x: 0, y: hintBottom, w: W, h: Math.max(H * 0.45, top - 6 - hintBottom) };
 }
 {
   const a = viewArea(), r = Math.min(a.w, a.h) / Math.max(a.w, a.h);
@@ -770,7 +777,7 @@ function addWave(p, x0, y0, kx, ky, sx, sy = sx, m = 0) {
   if (waveLog.length > 200) waveLog.shift();
   addPacket(p, x0, y0, kx, ky, sx, sy, false, m);
 }
-const SCENES = ['free', 'slit', 'tunnel', 'trap', 'stadium', 'pair'];
+const SCENES = ['free', 'slit', 'tunnel', 'trap', 'stadium', 'pair', 'level'];
 const sceneWalls = new Float64Array(N);
 
 function setScene(name, restore = null) {
@@ -826,6 +833,9 @@ function setScene(name, restore = null) {
   } else if (name === 'pair') {
     tool = 'play';
     emitPair();
+  } else if (name === 'level') {
+    tool = 'play'; current = 0; spin = 0; forces = 0; forcesDirty = true; autoThrow = false;
+    buildLevel();
   }
   sceneWalls.set(Vwall);                   // remember the scene's own walls, so a share code only stores your edits
   if (restore) {
@@ -834,15 +844,18 @@ function setScene(name, restore = null) {
     for (const w of restore.waves) addWave(particles[w.p], w.x, w.y, w.kx, w.ky, w.sx, w.sy, w.m);
   }
   $('#scene').value = name;
-  const show = { fireBtn: !!exp.mode, autoBtn: name === 'slit', moreBtn: name === 'slit', peekBtn: name === 'slit',
-    energyBtn: name === 'trap', emitBtn: name === 'pair', collideBtn: name === 'pair' };
+  const lv = name === 'level';
+  const show = { fireBtn: !!exp.mode || (lv && !!LV().fire), autoBtn: name === 'slit', moreBtn: name === 'slit', peekBtn: name === 'slit',
+    energyBtn: name === 'trap', emitBtn: name === 'pair', collideBtn: name === 'pair', prevBtn: lv, restartBtn: lv, nextBtn: lv };
   for (const id in show) $('#' + id).style.display = show[id] ? '' : 'none';
   $('#expGrp').style.display = Object.values(show).some(Boolean) ? 'flex' : 'none';
-  for (const id of ['#drawSel', '#spinBtn', '#forceBtn', '#repeatBtn']) $(id).disabled = name === 'pair';
-  layout();   // the toolbar may have changed height
+  for (const id of ['#spinBtn', '#forceBtn', '#repeatBtn']) $(id).disabled = name === 'pair' || lv;
+  if (!lv) { $('#drawSel').disabled = name === 'pair'; document.querySelectorAll('#drawSel option').forEach(o => { o.disabled = false; }); }
+  document.querySelectorAll('.sw').forEach(b => { b.disabled = lv && b.dataset.p !== '0'; });
   syncButtons();
-  wallsChanged();
   updateHint();
+  layout();   // the toolbar and hint may have changed height
+  wallsChanged();
 }
 
 function fire() {
@@ -1058,6 +1071,89 @@ function pairObserve() {                   // find both at once, jointly sampled
   slowmo = 1;
 }
 
+// ---------------------------------------------------------------- challenge levels
+// Each level: a goal ring (get `need` of the cyan particle's probability inside it), an optional launch pad
+// (throws always start there; your drag only sets direction and speed), which materials you may draw,
+// and a build() that lays out the walls. Coordinates are fractions of the box.
+const LEVELS = [
+  { name: 'First throw', text: 'Throw from the green pad so that half the cloud lands in the gold ring.',
+    pad: [0.14, 0.5], goal: [0.8, 0.5, 0.15], need: 0.5, tools: [], frame: true },
+  { name: 'Bank shot', text: 'A wall is in the way. Bounce off the frame, or draw your own walls to steer around it.',
+    pad: [0.14, 0.5], goal: [0.82, 0.5, 0.15], need: 0.3, tools: ['wall', 'erase'], frame: true,
+    build() { setWallRect(LX * 0.48, LX * 0.48 + 3, LY * 0.22, LY * 0.78, WALL_V); } },
+  { name: 'Through the wall', text: 'This wall is too high to climb, but a wave can leak through. Throw hard!',
+    pad: [0.16, 0.5], goal: [0.75, 0.5, 0.24], need: 0.15, tools: [], frame: true,
+    // just above the energy of the fastest possible throw (which depends on the screen's grid), so it's pure tunneling
+    build() { setWallRect(LX * 0.5, LX * 0.5 + 2, -1, LY + 1, 0.5 * K_MAX * K_MAX + 0.07); } },
+  { name: 'Bounce it home', text: 'The amber gate turns slow waves back. Throw gently so it bounces into the ring.',
+    pad: [0.12, 0.3], goal: [0.14, 0.72, 0.18], need: 0.3, tools: [], frame: false,
+    build() {
+      setWallRect(-1, LX * 0.3, LY * 0.5 - 1.5, LY * 0.5 + 1.5, WALL_V);
+      setWallRect(LX * 0.42, LX * 0.42 + 6, -1, LY + 1, GATE_V);
+    } },
+  { name: 'Steer with your eyes', text: 'No throwing here. Press and hold on the cloud, then slowly drag it into the ring.',
+    pad: null, goal: [0.8, 0.5, 0.15], need: 0.5, tools: [], frame: true,
+    start() { addPacket(particles[0], LX * 0.2, LY * 0.5, 0, 0, 5, 5, true); } },
+  { name: 'Tip the odds', text: 'The particle splits two ways. Draw amplifiers so it ends up in the gold ring 60% of the time. Press Fire to release it.',
+    pad: null, goal: [0.75, 0.24, 0.17], decoy: [0.75, 0.76, 0.17], need: 0.6, tools: ['amp', 'absorb', 'erase'], frame: true,
+    fire() {
+      const p = particles[0];
+      const dx = LX * 0.6, dy = LY * 0.26, k = 0.95, ky = k * dy / dx;   // aimed at the two ring centres
+      addPacket(p, LX * 0.2, LY * 0.5, k, -ky, PACKET_SIGMA, PACKET_SIGMA, true);
+      addPacket(p, LX * 0.2, LY * 0.5, k, ky, PACKET_SIGMA);
+    } },
+];
+const level = { idx: 0, throws: 0, won: false, best: 0 };
+let levelDone = {};
+try { levelDone = JSON.parse(localStorage.getItem('qf-levels') || '{}'); } catch (err) { levelDone = {}; }
+const LV = () => LEVELS[level.idx];
+const lvPt = ([fx, fy]) => [fx * LX, fy * LY];
+function buildLevel() {
+  const L = LV();
+  level.throws = 0; level.won = false; level.best = 0;
+  if (L.frame) {                           // reflecting frame just inside the absorbing edge, for bank shots
+    const m = 18, t = 3;
+    setWallRect(m, LX - m, m, m + t, WALL_V); setWallRect(m, LX - m, LY - m - t, LY - m, WALL_V);
+    setWallRect(m, m + t, m, LY - m, WALL_V); setWallRect(LX - m - t, LX - m, m, LY - m, WALL_V);
+  }
+  if (L.build) L.build();
+  if (L.start) L.start();
+  const allowed = new Set(L.tools);
+  document.querySelectorAll('#drawSel option[value]').forEach(o => { if (o.value) o.disabled = !allowed.has(o.value); });
+  $('#drawSel').disabled = !L.tools.length;
+}
+function goalProb(p, g) {
+  if (!p.active) return 0;
+  const [cx, cy] = lvPt(g), R = g[2] * LY;
+  let P = 0;
+  for (let j = Math.max(0, Math.floor((cy - R) / DY)); j <= Math.min(NY - 1, Math.ceil((cy + R) / DY)); j++) {
+    const dy = (j + 0.5) * DY - cy;
+    for (let i = Math.max(0, Math.floor(cx - R)); i <= Math.min(NX - 1, Math.ceil(cx + R)); i++) {
+      const dx = i + 0.5 - cx, k = j * NX + i;
+      if (dx * dx + dy * dy <= R * R) P += p.re[k] * p.re[k] + p.im[k] * p.im[k];
+    }
+  }
+  return P;
+}
+function checkLevel() {
+  const L = LV(), P = goalProb(particles[0], L.goal);
+  level.best = Math.max(level.best, P);
+  if (!level.won && P >= L.need) {
+    level.won = true;
+    levelDone[level.idx] = true;
+    try { localStorage.setItem('qf-levels', JSON.stringify(levelDone)); } catch (err) { /* progress just won't be remembered */ }
+    const [gx, gy] = lvPt(L.goal);
+    for (let n = 0; n < 6; n++) rings.push({ x: gx + (Math.random() - 0.5) * 20, y: gy + (Math.random() - 0.5) * 20, t: -n * 0.12, col: [255, 210, 90], kind: 'hit' });
+    [0, 2, 4].forEach((d, n) => setTimeout(() => note(LY * (0.7 - n * 0.2), 0.2, 1.2), n * 140));
+    const t = level.throws;
+    updateHint();
+    toast(level.idx === LEVELS.length - 1 ? 'You finished every challenge!' :
+      `Level complete${L.pad ? ` in ${t} throw${t === 1 ? '' : 's'}` : ''}! Press Next.`);
+    syncButtons();
+  }
+}
+function gotoLevel(i) { level.idx = Math.max(0, Math.min(LEVELS.length - 1, i)); setScene('level'); }
+
 // ---------------------------------------------------------------- canvas & view transform
 const $ = s => document.querySelector(s);
 const cv = $('#c'), ctx = cv.getContext('2d');
@@ -1209,6 +1305,7 @@ function render(now) {
   drawRings();
   ctx.globalCompositeOperation = 'source-over';
   if (scene === 'pair') drawPairOverlay();
+  if (scene === 'level') drawLevel(now);
   drawOverlay(now);
   drawMeter();
 }
@@ -1256,6 +1353,25 @@ function drawPairOverlay() {
   drawLabel('cyan position →', x0 + size, y0 + size + 11, `rgba(${COLORS[0].join(',')},0.9)`, 'right', 10);
   ctx.save(); ctx.translate(x0 - 8, y0 + size); ctx.rotate(-Math.PI / 2);
   drawLabel('magenta position →', 0, 0, `rgba(${COLORS[1].join(',')},0.9)`, 'left', 10); ctx.restore();
+}
+
+// Challenge level: goal ring with the live percentage, the decoy ring, the launch pad and the throw count.
+function drawLevel(now) {
+  const L = LV(), ring = (g, col, label, dash) => {
+    const [X, Y] = toScreen(...lvPt(g)), R = g[2] * LY * S;
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.setLineDash(dash ? [6, 5] : []);
+    ctx.beginPath(); ctx.arc(X, Y, R, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+    if (label) drawLabel(label, X, Y - R - 12, col, 'center', 12);
+  };
+  const P = goalProb(particles[0], L.goal), pulse = level.won ? 0.75 + 0.25 * Math.sin(now / 150) : 0.85;
+  ring(L.goal, `rgba(255,205,90,${pulse})`, `${Math.round(P * 100)}% / ${Math.round(L.need * 100)}%`, !level.won);
+  if (L.decoy) ring(L.decoy, 'rgba(170,180,210,0.5)', `${Math.round(goalProb(particles[0], L.decoy) * 100)}%`, true);
+  if (L.pad) {
+    const [X, Y] = toScreen(...lvPt(L.pad));
+    ctx.fillStyle = 'rgba(110,255,160,0.18)'; ctx.strokeStyle = 'rgba(110,255,160,0.8)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(X, Y, 5 * S, 0, 7); ctx.fill(); ctx.stroke();
+    drawLabel(`throws: ${level.throws}`, X, Y + 5 * S + 14, 'rgba(160,255,190,0.8)', 'center', 11);
+  }
 }
 
 // Energy meter: ⟨E⟩ split into motion (kinetic, bright) and height (potential, dim), plus spin when present.
@@ -1351,6 +1467,7 @@ function drawMarks() {
 }
 function drawRings() {
   for (const g of rings) {
+    if (g.t < 0) continue;                         // queued to appear a moment later
     const [X, Y] = toScreen(g.x, g.y), [r, gg, b] = g.col;
     if (g.kind === 'hit') {
       const R = 4 + g.t * 60, a = Math.max(0, 1 - g.t / 0.9);
@@ -1448,8 +1565,9 @@ function drawOverlay(now) {
     ctx.strokeStyle = `rgba(${BRUSH[tool].col},0.75)`; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(X, Y, BRUSH[tool].R * S, 0, 7); ctx.stroke();
   }
-  if (press && press.mode === 'launch') {
-    const [X0, Y0] = toScreen(press.px, press.py), [X1, Y1] = toScreen(pointer.x, pointer.y), [r, g, b] = particles[current].col;
+  if (press && press.mode === 'launch' && !(scene === 'level' && !LV().pad)) {
+    const pad = scene === 'level' ? lvPt(LV().pad) : [press.px, press.py];
+    const [X0, Y0] = toScreen(pad[0], pad[1]), [X1, Y1] = toScreen(pad[0] + pointer.x - press.px, pad[1] + pointer.y - press.py), [r, g, b] = particles[current].col;
     const grd = ctx.createRadialGradient(X0, Y0, 0, X0, Y0, PACKET_SIGMA * 2.2 * S);
     grd.addColorStop(0, `rgba(${r},${g},${b},0.45)`); grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
     ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(X0, Y0, PACKET_SIGMA * 2.2 * S, 0, 7); ctx.fill();
@@ -1490,7 +1608,10 @@ cv.addEventListener('pointerdown', e => {
   audioInit(); setPointer(e); lastInput = performance.now();
   if (!pointer.inside) return;
   cv.setPointerCapture(e.pointerId);
-  if (tool !== 'play') { painting = { x: pointer.x, y: pointer.y }; paint(pointer.x, pointer.y, pointer.x, pointer.y); return; }
+  if (tool !== 'play') {
+    if (scene === 'level' && !LV().tools.includes(tool)) { setTool('play'); return; }
+    painting = { x: pointer.x, y: pointer.y }; paint(pointer.x, pointer.y, pointer.x, pointer.y); return;
+  }
   press = { X: e.clientX, Y: e.clientY, px: pointer.x, py: pointer.y, t: performance.now(), mode: 'pending', zt: 0 };
 });
 cv.addEventListener('pointermove', e => {
@@ -1528,9 +1649,16 @@ function click(x, y) {
 const lastThrow = [null, null, null];
 let autoThrow = false, autoWait = 0;
 function launch(x0, y0, x1, y1) {
+  // the drag sets direction and speed
   let dx = x1 - x0, dy = y1 - y0; const L = Math.hypot(dx, dy) || 1;
   const k = Math.min(K_MAX, 0.25 + L * 0.02);
   if (scene === 'pair') { toast('In this scene, use Emit pair or Collide'); return; }
+  if (scene === 'level') {
+    const L = LV();
+    if (!L.pad) { toast(L.fire ? 'No throwing here: press Fire, and draw to change the odds' : 'No throwing here: hold the cloud and steer it'); return; }
+    [x0, y0] = lvPt(L.pad); level.throws++;
+    particles[0].clear();                                    // each throw is a fresh attempt
+  }
   lastThrow[current] = { x: x0, y: y0, kx: k * dx / L, ky: k * dy / L, m: spin };
   addWave(particles[current], x0, y0, k * dx / L, k * dy / L, PACKET_SIGMA, PACKET_SIGMA, spin);
   swoosh(k);
@@ -1743,6 +1871,8 @@ function syncButtons() {
   $('#peekBtn').classList.toggle('on', exp.watch);
   $('#meterBtn').classList.toggle('on', showMeter);
   $('#repeatBtn').classList.toggle('on', autoThrow);
+  $('#nextBtn').classList.toggle('on', scene === 'level' && level.won);
+  $('#prevBtn').disabled = level.idx === 0; $('#nextBtn').disabled = level.idx === LEVELS.length - 1;
   $('#spinBtn').textContent = SPIN_LABEL[spin]; $('#spinBtn').classList.toggle('on', spin !== 0);
   $('#forceBtn').textContent = FORCE_LABEL[forces]; $('#forceBtn').classList.toggle('on', forces !== 0);
 }
@@ -1759,6 +1889,7 @@ function updateHint() {
   else if (scene === 'slit') h.innerHTML = 'One particle at a time… <b>where do they land?</b> Then try <b>Peek at slits</b>.';
   else if (scene === 'tunnel') h.innerHTML = 'The wall is too high to climb, yet some of the wave <b>leaks through</b>. Press <b>Fire</b>.';
   else if (scene === 'trap') h.innerHTML = 'A quantum bowl. One cyan particle sits on <b>both sides at once</b>. Try <b>Measure energy</b>.';
+  else if (scene === 'level') h.innerHTML = `<b>Level ${level.idx + 1}/${LEVELS.length} · ${LV().name}</b> ${levelDone[level.idx] ? '✓ ' : ''}· ${LV().text}`;
   else if (scene === 'pair') h.innerHTML = '<b>Tap a wire</b> to find one particle, and watch what happens to the other.';
   else h.innerHTML = '<b>Drag</b> to throw a wave · <b>Click</b> to look · <b>Hold</b> to keep watching';
 }
@@ -1773,7 +1904,17 @@ function clearAll() {
   marks.length = 0; exp.hits.length = 0; exp.hist.fill(0); exp.queue.length = 0; exp.running = false; exp.readout = null;
 }
 $('#scene').onchange = e => { setScene(e.target.value); e.target.blur(); };
-$('#fireBtn').onclick = () => { audioInit(); fire(); };
+$('#fireBtn').onclick = () => { audioInit(); if (scene === 'level' && LV().fire) { LV().fire(); swoosh(0.9); } else fire(); };
+$('#prevBtn').onclick = () => gotoLevel(level.idx - 1);
+$('#nextBtn').onclick = () => gotoLevel(level.idx + 1);
+$('#restartBtn').onclick = () => {
+  if (scene !== 'level') return;
+  const keepV = Vwall.slice(), keepG = Gwall.slice();            // keep what you drew; just reset the particle
+  for (const p of particles) p.clear();
+  level.throws = 0; level.won = false; level.best = 0; marks.length = 0;
+  if (LV().start) LV().start();
+  Vwall.set(keepV); Gwall.set(keepG); syncButtons();
+};
 $('#autoBtn').onclick = () => { exp.auto = !exp.auto; exp.wait = 0; syncButtons(); };
 $('#moreBtn').onclick = () => { audioInit(); addHundred(); };
 $('#peekBtn').onclick = () => {
@@ -1811,6 +1952,7 @@ addEventListener('keydown', e => {
   else if (k === 'q' || k === 'escape') { setTool('play'); document.querySelectorAll('.modal').forEach(m => m.classList.remove('show')); }
   else if (k === 'v') $('#spinBtn').click(); else if (k === 'g') $('#forceBtn').click(); else if (k === 'n') $('#meterBtn').click();
   else if (k === 'a') $('#repeatBtn').click();
+  else if (k === 'r') $('#restartBtn').click();
   else if (k === 'f') { audioInit(); fire(); } else if (k === 'p') $('#phaseBtn').click();
   else if (k === 'm') toggleMic(); else if (k === 's') $('#soundBtn').click(); else if (k === 'k') $('#pauseBtn').click();
   else if (k === 'c') clearAll(); else if (k === 'h' || k === '?') $('#help').classList.toggle('show');
@@ -1852,6 +1994,7 @@ function frame(now) {
     } else { simTime += steps * DT; exp.t += steps * DT; }
   }
   updateExperiment(paused ? 0 : dt);
+  if (scene === 'level') checkLevel();
   // energy meter: refresh one particle every few frames (each needs its own FFT)
   frameNo++;
   if (showMeter && scene !== 'pair' && frameNo % 4 === 0) {
@@ -1892,7 +2035,7 @@ layout();
 syncButtons();
 requestAnimationFrame(frame);
 // Exposed for tinkering from the dev console.
-window.QF = { rebuild: rebuildPotential, hasGain: () => hasGain, matCounts: () => { const c = { wall: 0, gate: 0, absorb: 0, amp: 0 }; for (let k = 0; k < N; k++) { if (Gwall[k] > 0) c.absorb++; else if (Gwall[k] < 0) c.amp++; else if (Vwall[k] >= 3) c.wall++; else if (Vwall[k] > 0) c.gate++; } return c; }, pair, pairStep, encodeSetup, decodeSetup, measureEnergy, trapLevels, measureObservables, updateForces, get forces() { return forces; }, set forces(v) { forces = v; forcesDirty = true; }, waveLog, zeno, particles, step, measureAt, observeAll, addPacket, setScene, exp, perf, get DY() { return DY; }, get stepCost() { return stepCost; } };
+window.QF = { BRUSH, gotoLevel, goalProb, LEVELS, lvPt, rebuild: rebuildPotential, hasGain: () => hasGain, matCounts: () => { const c = { wall: 0, gate: 0, absorb: 0, amp: 0 }; for (let k = 0; k < N; k++) { if (Gwall[k] > 0) c.absorb++; else if (Gwall[k] < 0) c.amp++; else if (Vwall[k] >= 3) c.wall++; else if (Vwall[k] > 0) c.gate++; } return c; }, pair, pairStep, encodeSetup, decodeSetup, measureEnergy, trapLevels, measureObservables, updateForces, get forces() { return forces; }, set forces(v) { forces = v; forcesDirty = true; }, waveLog, zeno, particles, step, measureAt, observeAll, addPacket, setScene, exp, perf, get DY() { return DY; }, get stepCost() { return stepCost; } };
 </script>
 </body>
 </html>

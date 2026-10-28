@@ -22,6 +22,7 @@ needs `https://` or `localhost`, e.g. `npx http-server`.)
 | **Auto** | Repeats your last throw of the selected color, from the same spot and direction, each time that particle fades away or leaves the screen. |
 | **Energy** | Shows each particle's energy and spin. In the trap it shows the allowed energy levels, and **Measure energy** freezes the particle into one of them. |
 | **Entangled pair** | Two particles on two wires sharing one wavefunction. Finding one changes the other. |
+| **Challenges** | Six puzzles in the scene menu: get enough of the cloud into the gold ring using throws, bank shots, tunneling, the energy gate, your gaze and amplifiers. |
 | **Share** | Gives a code (or link) that rebuilds your scene, walls and thrown waves. |
 | **Mic** | Noise shakes the clouds, and a clap collapses them. |
 
