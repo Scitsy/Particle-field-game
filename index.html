@@ -38,7 +38,7 @@
   button, select { font: inherit; color: var(--text); background: transparent; border: 0; border-radius: 8px; padding: 6px 10px;
     cursor: pointer; white-space: nowrap; }
   button:hover, select:hover { background: var(--glass-hi); }
-  button.on { background: rgba(111, 227, 255, .18); color: #fff; box-shadow: inset 0 0 0 1px rgba(111, 227, 255, .45); }
+  button.on, select.on { background-color: rgba(111, 227, 255, .18); color: #fff; box-shadow: inset 0 0 0 1px rgba(111, 227, 255, .45); }
   select { appearance: none; -webkit-appearance: none; padding-right: 22px;
     background-image: linear-gradient(45deg, transparent 50%, var(--dim) 50%), linear-gradient(135deg, var(--dim) 50%, transparent 50%);
     background-position: calc(100% - 12px) 55%, calc(100% - 7px) 55%; background-size: 5px 5px; background-repeat: no-repeat; }
@@ -69,7 +69,7 @@
     background: rgba(0, 0, 0, .35); border: 1px solid var(--line); border-radius: 8px; padding: 8px; word-break: break-all; resize: none; }
   #loadCode { flex: 1; width: auto; min-width: 0; font-size: 13px; }
   #copyMsg, #loadMsg { color: var(--dim); font-size: 13px; }
-  button:disabled { opacity: .35; cursor: default; }
+  button:disabled, select:disabled { opacity: .35; cursor: default; }
   button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   @media (max-width: 640px) {
     #title { display: none; }
@@ -97,8 +97,14 @@
   </div>
   <div class="grp">
     <button data-tool="play" class="on" title="Drag: launch a wave · Click: look · Hold: keep looking">Play</button>
-    <button data-tool="wall" id="wallBtn" title="Draw walls (W)">Walls</button>
-    <button data-tool="erase" id="eraseBtn" title="Erase walls (E)">Erase</button>
+    <select id="drawSel" title="Draw walls and special materials">
+      <option value="" hidden>Draw</option>
+      <option value="wall">Wall</option>
+      <option value="gate">Energy gate</option>
+      <option value="absorb">Absorber</option>
+      <option value="amp">Amplifier</option>
+      <option value="erase">Eraser</option>
+    </select>
   </div>
   <div class="grp">
     <button id="observeBtn" class="primary" title="Look everywhere at once (Space)">Observe all</button>
@@ -165,6 +171,9 @@
       through <i>both</i> slits. Now press <b>Peek at slits</b>: knowing which slit it used makes the stripes vanish.</li>
     <li><b>Spin</b> throws waves that swirl: little whirlpools with a hole in the middle. Turn on <b>Phase</b> to see the rainbow spiral.</li>
     <li><b>Forces</b> makes different colors push each other away or pull each other in.</li>
+    <li><b>Draw</b> lets you paint: a <b>Wall</b> bounces everything; an <b>Energy gate</b> lets fast waves roll over and bounces slow ones
+      (drag short to throw slow, long to throw fast); an <b>Absorber</b> soaks waves up; an <b>Amplifier</b> makes the path through it
+      more likely. Try an amplifier over one slit of the double slit.</li>
     <li><b>Auto</b> repeats your last throw of the selected color, from the same spot in the same direction, each time
       that particle fades away or leaves the screen.</li>
     <li><b>Energy</b> shows how much energy each particle has: the bright part is motion, the dim part is height (potential).
@@ -207,6 +216,10 @@
     <li>Entangled pair: two particles on a line need one wavefunction <code>ψ(x₁, x₂)</code> (the inset). It evolves under
       <code>H = p₁²/2 + p₂²/2 + V(x₁−x₂)</code> with the same split-operator method on a 128×128 grid. The clouds on the wires are the marginals
       <code>ρ₁(x₁) = ∫|ψ|² dx₂</code>. Measuring one coordinate updates the joint state, so the other marginal changes when they're correlated.</li>
+    <li>Special walls: an energy gate is a thick barrier of height 0.35, so only waves with <code>k²/2 &gt; 0.35</code> (|k| &gt; 0.84) get over.
+      Absorbers and amplifiers are an imaginary potential <code>V − iΓ/2</code>: amplitude changes by <code>e<sup>−Γt/2</sup></code>, decay for Γ &gt; 0,
+      gain for Γ &lt; 0. A single particle can't be more than 100% likely, so after gain ψ is scaled back to Σ|ψ|² = 1: the amplified branch
+      of the superposition gains weight relative to the others.</li>
     <li>Mic noise adds a random, moving potential: a crude model of decoherence (dephasing by the environment).</li>
   </ul>
   <h3>Keys</h3>
@@ -361,6 +374,10 @@ const mask = new Float64Array(N);
 }
 // Potential = scene background + user-drawn walls + (optional) microphone noise.
 const Vbase = new Float64Array(N), Vwall = new Float64Array(N), Vtot = new Float64Array(N);
+// Absorbers and amplifiers are an imaginary potential: V − iΓ/2. Γ > 0 soaks the wave up, Γ < 0 makes it grow
+// (a gain medium). Over a step that's an extra factor e^(−Γ·DT/2) on the amplitude, kept in Damp.
+const Gwall = new Float64Array(N), Damp = new Float64Array(N).fill(1);
+let hasGain = false;
 const Pc = new Float64Array(N), Ps = new Float64Array(N);
 let potentialDirty = true, wallVersion = 0;
 const noiseWaves = Array.from({ length: 6 }, () => {
@@ -386,8 +403,8 @@ function rebuildPotential() {
         for (const w of noiseWaves) s += Math.cos(w.kx * i + w.ky * y - w.w * simTime + w.ph);
         V += noiseAmp * s * 0.41;
       }
-      const ph = -V * DT / 2;
-      Vtot[k] = V; Pc[k] = Math.cos(ph); Ps[k] = Math.sin(ph);
+      const ph = -V * DT / 2, damp = Gwall[k] ? Math.exp(-Gwall[k] * DT / 4) : 1;   // applied twice per step
+      Vtot[k] = V; Damp[k] = damp; Pc[k] = Math.cos(ph) * damp; Ps[k] = Math.sin(ph) * damp;
     }
   }
   noiseWasOn = useNoise;
@@ -513,7 +530,7 @@ function updateForces() {
     for (let k = 0; k < N; k++) {
       let u = 0; for (const q of others) u += q.U[k];
       const ph = -(Vtot[k] + g * u) * DT / 2;
-      p.Pc[k] = Math.cos(ph); p.Ps[k] = Math.sin(ph);
+      p.Pc[k] = Math.cos(ph) * Damp[k]; p.Ps[k] = Math.sin(ph) * Damp[k];
     }
   }
   for (const p of particles) if (!p.active) { p.Pc = p.Ps = null; }
@@ -741,7 +758,10 @@ function setWallRect(x0, x1, y0, y1, V) {
   for (let j = 0; j < NY; j++) { const y = (j + 0.5) * DY; if (y < y0 || y > y1) continue;
     for (let i = Math.max(0, Math.floor(x0)); i <= Math.min(NX - 1, Math.ceil(x1)); i++) if (i + 0.5 >= x0 && i + 0.5 <= x1) Vwall[j * NX + i] = V; }
 }
-function wallsChanged() { potentialDirty = true; wallVersion++; wallImgDirty = true; }
+function wallsChanged() {
+  potentialDirty = true; wallVersion++; wallImgDirty = true;
+  hasGain = false; for (let k = 0; k < N; k++) if (Gwall[k] < 0) { hasGain = true; break; }
+}
 
 // Every wave thrown since the scene started is logged, so a setup can be shared and rebuilt from scratch.
 const waveLog = [];
@@ -757,7 +777,7 @@ function setScene(name, restore = null) {
   scene = name;
   for (const p of particles) p.clear();
   waveLog.length = 0; pair.active = false; herm = null; lastThrow.fill(null);
-  Vbase.fill(0); Vwall.fill(0);
+  Vbase.fill(0); Vwall.fill(0); Gwall.fill(0);
   marks.length = 0; rings.length = 0;
   exp.mode = null; exp.running = false; exp.auto = false; exp.queue.length = 0;
   exp.hits.length = 0; exp.hist.fill(0); exp.pred = [null, null]; exp.watch = false; exp.readout = null;
@@ -809,7 +829,7 @@ function setScene(name, restore = null) {
   }
   sceneWalls.set(Vwall);                   // remember the scene's own walls, so a share code only stores your edits
   if (restore) {
-    if (restore.walls) for (let k = 0; k < N; k++) if (!Number.isNaN(restore.walls[k])) Vwall[k] = restore.walls[k];
+    if (restore.walls) for (let k = 0; k < N; k++) if (!Number.isNaN(restore.walls[k])) { Vwall[k] = restore.walls[k]; Gwall[k] = restore.gains[k]; }
     forces = restore.forces; forcesDirty = true;
     for (const w of restore.waves) addWave(particles[w.p], w.x, w.y, w.kx, w.ky, w.sx, w.sy, w.m);
   }
@@ -818,7 +838,7 @@ function setScene(name, restore = null) {
     energyBtn: name === 'trap', emitBtn: name === 'pair', collideBtn: name === 'pair' };
   for (const id in show) $('#' + id).style.display = show[id] ? '' : 'none';
   $('#expGrp').style.display = Object.values(show).some(Boolean) ? 'flex' : 'none';
-  for (const id of ['#wallBtn', '#eraseBtn', '#spinBtn', '#forceBtn', '#repeatBtn']) $(id).disabled = name === 'pair';
+  for (const id of ['#drawSel', '#spinBtn', '#forceBtn', '#repeatBtn']) $(id).disabled = name === 'pair';
   layout();   // the toolbar may have changed height
   syncButtons();
   wallsChanged();
@@ -1095,8 +1115,11 @@ function drawBackground() {
 function drawWallImage() {
   const img = wctx.createImageData(NX, NY), d = img.data;
   for (let k = 0; k < N; k++) {
-    const V = Vwall[k], o = k * 4;
-    if (V > 0) {
+    const V = Vwall[k], G = Gwall[k], o = k * 4;
+    if (G > 0) { d[o] = 120; d[o + 1] = 60; d[o + 2] = 190; d[o + 3] = 150; }          // absorber: violet
+    else if (G < 0) { d[o] = 90; d[o + 1] = 255; d[o + 2] = 150; d[o + 3] = 120; }     // amplifier: green
+    else if (V > 0 && V < 0.5) { d[o] = 255; d[o + 1] = 190; d[o + 2] = 90; d[o + 3] = 95; }   // energy gate: amber haze
+    else if (V > 0) {
       const a = 0.32 + 0.5 * Math.min(1, V / WALL_V);
       const barrier = V < 3;
       d[o] = barrier ? 255 : 150; d[o + 1] = barrier ? 170 : 175; d[o + 2] = barrier ? 90 : 255; d[o + 3] = a * 255;
@@ -1422,8 +1445,8 @@ function drawOverlay(now) {
   }
   if (tool !== 'play' && pointer.inside) {
     const [X, Y] = toScreen(pointer.x, pointer.y);
-    ctx.strokeStyle = tool === 'wall' ? 'rgba(150,175,255,0.7)' : 'rgba(255,140,140,0.7)'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.arc(X, Y, (tool === 'wall' ? 2.5 : 7) * S, 0, 7); ctx.stroke();
+    ctx.strokeStyle = `rgba(${BRUSH[tool].col},0.75)`; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(X, Y, BRUSH[tool].R * S, 0, 7); ctx.stroke();
   }
   if (press && press.mode === 'launch') {
     const [X0, Y0] = toScreen(press.px, press.py), [X1, Y1] = toScreen(pointer.x, pointer.y), [r, g, b] = particles[current].col;
@@ -1534,15 +1557,26 @@ function zenoTick(simDt) {
     potentialDirty = true;
   }
 }
+// What each drawing tool paints: real potential V and absorption rate Γ (negative = gain).
+// The energy gate is a low, thick barrier: a wave with kinetic energy k²/2 above GATE_V rolls over it,
+// one below bounces back (thick enough that tunneling through it is rare).
+const GATE_V = 0.35;                                       // passes |k| > √(2·0.35) ≈ 0.84
+const BRUSH = {
+  wall:   { R: 2.5, V: WALL_V, G: 0,     col: '150,175,255' },
+  gate:   { R: 3,   V: GATE_V, G: 0,     col: '255,190,90' },
+  absorb: { R: 3.5, V: 0,      G: 0.5,   col: '190,120,255' },
+  amp:    { R: 3.5, V: 0,      G: -0.12, col: '110,255,160' },
+  erase:  { R: 7,   V: 0,      G: 0,     col: '255,140,140' },
+};
 function paint(xa, ya, xb, yb) {
-  const R = tool === 'wall' ? 2.5 : 7, V = tool === 'wall' ? WALL_V : 0;
+  const { R, V, G } = BRUSH[tool];
   const n = Math.max(1, Math.ceil(Math.hypot(xb - xa, yb - ya) / 1));
   for (let s = 0; s <= n; s++) {
     const cx = xa + (xb - xa) * s / n, cy = ya + (yb - ya) * s / n;
     for (let j = Math.max(0, Math.floor((cy - R) / DY)); j <= Math.min(NY - 1, Math.ceil((cy + R) / DY)); j++)
       for (let i = Math.max(0, Math.floor(cx - R)); i <= Math.min(NX - 1, Math.ceil(cx + R)); i++) {
         const ddx = i + 0.5 - cx, ddy = (j + 0.5) * DY - cy;
-        if (ddx * ddx + ddy * ddy <= R * R) Vwall[j * NX + i] = V;
+        if (ddx * ddx + ddy * ddy <= R * R) { Vwall[j * NX + i] = V; Gwall[j * NX + i] = G; }
       }
   }
   wallsChanged();
@@ -1626,11 +1660,12 @@ function unb64url(str) {
   return Uint8Array.from(atob(str), c => c.charCodeAt(0));
 }
 function encodeSetup() {
-  const out = [2, SCENES.indexOf(scene), forces];
+  const out = [3, SCENES.indexOf(scene), forces];
   const varint = v => { while (v >= 128) { out.push((v & 127) | 128); v = Math.floor(v / 128); } out.push(v); };
   const u16 = v => { v = Math.max(0, Math.min(65535, Math.round(v))); out.push(v & 255, v >> 8); };
-  const q = V => V <= 0 ? 0 : V >= 3 ? 1 : 2;
-  const cell = k => q(Vwall[k]) === q(sceneWalls[k]) ? 3 : q(Vwall[k]);   // 3 = unchanged from the scene
+  // cell codes: 0 empty, 1 wall, 2 tunneling barrier, 3 unchanged from the scene, 4 gate, 5 absorber, 6 amplifier
+  const q = (V, G) => G > 0 ? 5 : G < 0 ? 6 : V <= 0 ? 0 : V >= 3 ? 1 : V < 0.5 ? 4 : 2;
+  const cell = k => q(Vwall[k], Gwall[k]) === q(sceneWalls[k], 0) ? 3 : q(Vwall[k], Gwall[k]);
   const runs = []; let cur = cell(0), len = 0;
   for (let k = 0; k < N; k++) { const v = cell(k); if (v === cur) len++; else { runs.push([cur, len]); cur = v; len = 1; } }
   runs.push([cur, len]);
@@ -1650,17 +1685,22 @@ function decodeSetup(text) {
   const byte = () => { if (i >= b.length) throw new Error('This code is cut off. Copy the whole thing and try again.'); return b[i++]; };
   const varint = () => { let v = 0, mul = 1, c; do { c = byte(); v += (c & 127) * mul; mul *= 128; } while (c & 128); return v; };
   const u16 = () => byte() | (byte() << 8);
-  if (byte() !== 2) throw new Error('This code was made by a different version of the app.');
+  const ver = byte();
+  if (ver !== 2 && ver !== 3) throw new Error('This code was made by a different version of the app.');
   const sceneName = SCENES[byte()]; if (!sceneName) throw new Error('This code names a scene that doesn\'t exist.');
-  const f = byte() % 3, walls = new Float64Array(N).fill(NaN), vals = [0, WALL_V, 0.9, NaN];
-  for (let r = varint(), k = 0; r > 0; r--) { const v = byte(), l = varint(); walls.fill(v < 4 ? vals[v] : NaN, Math.min(N, k), Math.min(N, k + l)); k += l; }
+  const f = byte() % 3, walls = new Float64Array(N).fill(NaN), gains = new Float64Array(N);
+  const V = [0, WALL_V, 0.9, NaN, GATE_V, 0, 0], G = [0, 0, 0, 0, 0, BRUSH.absorb.G, BRUSH.amp.G];
+  for (let r = varint(), k = 0; r > 0; r--) {
+    const v = byte(), l = varint(), a = Math.min(N, k), b = Math.min(N, k + l);
+    walls.fill(v < 7 ? V[v] : NaN, a, b); gains.fill(v < 7 ? G[v] : 0, a, b); k += l;
+  }
   const waves = [];
   for (let n = varint(); n > 0; n--) {
     const pm = byte();
     waves.push({ p: Math.min(2, pm & 3), m: Math.max(-2, Math.min(2, (pm >> 2) - 4)), x: u16() / 65535 * LX, y: u16() / 65535 * LY,
       kx: (u16() - 32768) / 10000, ky: (u16() - 32768) / 10000, sx: Math.max(1, byte() / 10), sy: Math.max(1, byte() / 10) });
   }
-  return { scene: sceneName, forces: f, walls, waves };
+  return { scene: sceneName, forces: f, walls, gains, waves };
 }
 function openShare() {
   const code = encodeSetup();
@@ -1694,6 +1734,7 @@ const FORCE_LABEL = ['Forces: off', 'Forces: push', 'Forces: pull'];
 function syncButtons() {
   document.querySelectorAll('.sw').forEach(b => b.classList.toggle('on', +b.dataset.p === current));
   document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === tool));
+  $('#drawSel').value = tool === 'play' ? '' : tool; $('#drawSel').classList.toggle('on', tool !== 'play');
   $('#phaseBtn').classList.toggle('on', phaseView);
   $('#micBtn').classList.toggle('on', !!mic);
   $('#soundBtn').classList.toggle('on', soundOn);
@@ -1711,7 +1752,10 @@ function toast(msg) { const el = $('#toast'); el.textContent = msg; el.style.opa
 function updateHint() {
   const h = $('#hint');
   if (tool === 'wall') h.innerHTML = '<b>Draw</b> walls. Waves bounce off them.';
-  else if (tool === 'erase') h.innerHTML = '<b>Drag</b> to erase walls.';
+  else if (tool === 'gate') h.innerHTML = '<b>Energy gate</b>: fast waves roll over it, slow ones bounce back.';
+  else if (tool === 'absorb') h.innerHTML = '<b>Absorber</b>: soaks up any wave that enters it.';
+  else if (tool === 'amp') h.innerHTML = '<b>Amplifier</b>: makes the path through it more likely.';
+  else if (tool === 'erase') h.innerHTML = '<b>Drag</b> to erase walls and materials.';
   else if (scene === 'slit') h.innerHTML = 'One particle at a time… <b>where do they land?</b> Then try <b>Peek at slits</b>.';
   else if (scene === 'tunnel') h.innerHTML = 'The wall is too high to climb, yet some of the wave <b>leaks through</b>. Press <b>Fire</b>.';
   else if (scene === 'trap') h.innerHTML = 'A quantum bowl. One cyan particle sits on <b>both sides at once</b>. Try <b>Measure energy</b>.';
@@ -1720,6 +1764,7 @@ function updateHint() {
 }
 document.querySelectorAll('.sw').forEach(b => b.onclick = () => { current = +b.dataset.p; syncButtons(); });
 document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
+$('#drawSel').onchange = e => { setTool(e.target.value || 'play'); e.target.blur(); };
 $('#observeBtn').onclick = () => { audioInit(); observeAll(); };
 $('#clearBtn').onclick = clearAll;
 function clearAll() {
@@ -1801,6 +1846,9 @@ function frame(now) {
         if (exp.watch && exp.running && !exp.watched && exp.t >= exp.tWatch) whichPath();
       }
       stepCost = 0.9 * stepCost + 0.1 * (performance.now() - t0) / (steps * act.length);
+      // Gain can push Σ|ψ|² past 1. A particle can't be more than certainly here, so scale back down:
+      // the amplified path ends up more likely than the others, rather than creating extra particles.
+      if (hasGain) for (const p of act) { const s2 = p.sumSq(); if (s2 > 1) p.scale(1 / Math.sqrt(s2)); }
     } else { simTime += steps * DT; exp.t += steps * DT; }
   }
   updateExperiment(paused ? 0 : dt);
@@ -1844,7 +1892,7 @@ layout();
 syncButtons();
 requestAnimationFrame(frame);
 // Exposed for tinkering from the dev console.
-window.QF = { pair, pairStep, encodeSetup, decodeSetup, measureEnergy, trapLevels, measureObservables, updateForces, get forces() { return forces; }, set forces(v) { forces = v; forcesDirty = true; }, waveLog, zeno, particles, step, measureAt, observeAll, addPacket, setScene, exp, perf, get DY() { return DY; }, get stepCost() { return stepCost; } };
+window.QF = { rebuild: rebuildPotential, hasGain: () => hasGain, matCounts: () => { const c = { wall: 0, gate: 0, absorb: 0, amp: 0 }; for (let k = 0; k < N; k++) { if (Gwall[k] > 0) c.absorb++; else if (Gwall[k] < 0) c.amp++; else if (Vwall[k] >= 3) c.wall++; else if (Vwall[k] > 0) c.gate++; } return c; }, pair, pairStep, encodeSetup, decodeSetup, measureEnergy, trapLevels, measureObservables, updateForces, get forces() { return forces; }, set forces(v) { forces = v; forcesDirty = true; }, waveLog, zeno, particles, step, measureAt, observeAll, addPacket, setScene, exp, perf, get DY() { return DY; }, get stepCost() { return stepCost; } };
 </script>
 </body>
 </html>

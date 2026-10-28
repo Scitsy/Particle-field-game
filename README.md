@@ -18,6 +18,7 @@ needs `https://` or `localhost`, e.g. `npx http-server`.)
 | **Scenes** | Double slit (with "Peek at slits" to destroy the pattern), tunneling, harmonic trap (a Schrödinger's-cat state), stadium billiard, entangled pair. |
 | **Spin** | Throws vortex waves that carry angular momentum. Phase view shows them as rainbow spirals. |
 | **Forces** | Makes different-colored particles push each other away or pull each other in. |
+| **Draw** | Paints walls, energy gates (fast waves pass, slow ones bounce), absorbers and amplifiers. |
 | **Auto** | Repeats your last throw of the selected color, from the same spot and direction, each time that particle fades away or leaves the screen. |
 | **Energy** | Shows each particle's energy and spin. In the trap it shows the allowed energy levels, and **Measure energy** freezes the particle into one of them. |
 | **Entangled pair** | Two particles on two wires sharing one wavefunction. Finding one changes the other. |
@@ -41,6 +42,9 @@ Press **?** in the app for the full explanation.
 - **Double slit:** the screen records the probability flux absorbed at the right edge, and each run samples one hit from it.
   "Peek" is a which-path measurement (upper or lower half) just after the slits.
 - **Boundaries** are absorbing layers, so probability that leaves the box is gone.
+- **Special walls:** an energy gate is a thick barrier of height 0.35, so only waves with |k| > 0.84 get over.
+  Absorbers and amplifiers are an imaginary potential V − iΓ/2 (decay for Γ > 0, gain for Γ < 0). After gain the
+  wavefunction is scaled back to total probability 1, so the amplified branch gains weight instead of creating particles.
 - **Spin:** a vortex packet `((x−x₀) ± i(y−y₀))·Gaussian` carries angular momentum ±ħ (the meter reads 0.996ħ).
 - **Forces:** mean-field (Hartree) interaction through an FFT convolution with a Gaussian kernel. It pushes and pulls but by
   construction cannot entangle.
