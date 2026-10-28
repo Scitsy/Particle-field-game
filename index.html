@@ -90,6 +90,9 @@
     <button class="sw on" data-p="0" style="--c:#5fe0ff" aria-label="Cyan particle"></button>
     <button class="sw" data-p="1" style="--c:#ff62c8" aria-label="Magenta particle"></button>
     <button class="sw" data-p="2" style="--c:#ffcb55" aria-label="Gold particle"></button>
+    <button class="sw" data-p="3" style="--c:#78ff8c" aria-label="Green particle"></button>
+    <button class="sw" data-p="4" style="--c:#ff8c3c" aria-label="Orange particle"></button>
+    <button class="sw" data-p="5" style="--c:#af7dff" aria-label="Violet particle"></button>
   </div>
   <div class="grp">
     <button id="spinBtn" title="Throw waves that spin: vortices carrying angular momentum (V)">Spin: off</button>
@@ -200,7 +203,7 @@
       every throw starts from the pad and your drag only sets direction and speed. <b>Restart</b> (<span class="k">R</span>) keeps what you drew.</li>
     <li><b>Share</b> gives you a code (or link) that rebuilds your walls and waves for someone else.</li>
     <li><b>Sound</b>: the particles make a song together, all locked to one beat. Cyan is an 808 kick, magenta a dubstep wobble bass,
-      gold a snare. <b>Speed</b> picks the rhythm (slow = sparse, fast = busy), <b>direction</b> picks the note (right is the root note;
+      gold a snare, green a hi-hat, orange a chord stab and violet a synth lead. <b>Speed</b> picks the rhythm (slow = sparse, fast = busy), <b>direction</b> picks the note (right is the root note;
       turn counterclockwise to climb the scale), <b>spin</b> changes how fast the bass wobbles. In the trap, a particle spread over
       several energy levels wanders between notes; measure its energy and it settles into one loop.</li> Higher energy means a higher note, the sound pans left and right with the cloud,
       and a spinning particle wobbles. In the <b>Harmonic trap</b> you hear the energy levels themselves: a particle spread over
@@ -253,7 +256,7 @@
     <li>Mic noise adds a random, moving potential: a crude model of decoherence (dephasing by the environment).</li>
   </ul>
   <h3>Keys</h3>
-  <p><span class="k">Space</span> observe · <span class="k">1</span><span class="k">2</span><span class="k">3</span> particle ·
+  <p><span class="k">Space</span> observe · <span class="k">1</span>–<span class="k">6</span> particle ·
     <span class="k">W</span> walls · <span class="k">E</span> erase · <span class="k">Q</span> play · <span class="k">F</span> fire ·
     <span class="k">P</span> phase · <span class="k">M</span> mic · <span class="k">S</span> sound · <span class="k">K</span> pause ·
     <span class="k">V</span> spin · <span class="k">G</span> forces · <span class="k">N</span> energy · <span class="k">A</span> auto · <span class="k">R</span> restart level · <span class="k">B</span> rewind · <span class="k">D</span> 3D · <span class="k">[</span><span class="k">]</span> speed ·
@@ -446,7 +449,7 @@ function rebuildPotential() {
 }
 
 // ---------------------------------------------------------------- particles
-const COLORS = [[95, 224, 255], [255, 98, 200], [255, 203, 85]];
+const COLORS = [[95, 224, 255], [255, 98, 200], [255, 203, 85], [120, 255, 140], [255, 140, 60], [175, 125, 255]];
 class Particle {
   constructor(idx) {
     this.idx = idx; this.col = COLORS[idx];
@@ -465,7 +468,7 @@ class Particle {
   scale(f) { const re = this.re, im = this.im; for (let k = 0; k < N; k++) { re[k] *= f; im[k] *= f; } }
   normalizeTo(target) { const s = this.sumSq(); if (s > 1e-12) this.scale(Math.sqrt(target / s)); this.norm = target; }
 }
-const particles = [new Particle(0), new Particle(1), new Particle(2)];
+const particles = COLORS.map((c, i) => new Particle(i));
 let current = 0;
 
 // Gaussian wave packet: |φ|² ∝ exp(-(x-x0)²/2sx² - (y-y0)²/2sy²), momentum (kx, ky).
@@ -546,7 +549,9 @@ function tlSnap() {
   if (!timeAllowed()) return;
   tl.snaps.push({ t: tl.t, parts: particles.map(p => p.active ? { re: Float32Array.from(p.re), im: Float32Array.from(p.im) } : null) });
   tl.lastSnap = tl.t;
-  while (tl.snaps.length > MAX_SNAPS || (tl.snaps.length > 2 && tl.snaps[0].t < tl.t - HISTORY)) tl.snaps.shift();
+  // keep memory bounded (~60 MB): with more particles active, keep fewer snapshots
+  const states = () => tl.snaps.reduce((a, sn) => a + sn.parts.filter(Boolean).length, 0);
+  while (tl.snaps.length > 2 && (tl.snaps.length > MAX_SNAPS || tl.snaps[0].t < tl.t - HISTORY || states() > 240)) tl.snaps.shift();
 }
 function tlRestore(sn) {
   sn.parts.forEach((st, i) => {
@@ -1856,7 +1861,7 @@ function click(x, y) {
   if (!found) onMiss(x, y);
 }
 // The last wave thrown with each color, for the Auto button.
-const lastThrow = [null, null, null];
+const lastThrow = COLORS.map(() => null);
 let autoThrow = false, autoWait = 0;
 function launch(x0, y0, x1, y1) {
   // the drag sets direction and speed
@@ -1921,14 +1926,18 @@ function paint(xa, ya, xb, yb) {
 }
 
 // ---------------------------------------------------------------- audio: synth + microphone
+const MASTER_GAIN = 0.95;   // loud, with a compressor after it
 let AC = null, master = null, soundOn = true, humOn = true;   // humOn: the particles' music (the beat)
 function audioInit() {
   if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
   const A = window.AudioContext || window.webkitAudioContext; if (!A) return;
-  AC = new A(); master = AC.createGain(); master.gain.value = soundOn ? 0.5 : 0;
+  AC = new A(); master = AC.createGain(); master.gain.value = soundOn ? MASTER_GAIN : 0;
+  const comp = AC.createDynamicsCompressor();
+  comp.threshold.value = -14; comp.knee.value = 10; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.2;
   const delay = AC.createDelay(), fb = AC.createGain(), lp = AC.createBiquadFilter();
   delay.delayTime.value = 0.27; fb.gain.value = 0.32; lp.type = 'lowpass'; lp.frequency.value = 2400;
-  master.connect(AC.destination); master.connect(delay); delay.connect(lp); lp.connect(fb); fb.connect(delay); lp.connect(AC.destination);
+  master.connect(comp); comp.connect(AC.destination);
+  master.connect(delay); delay.connect(lp); lp.connect(fb); fb.connect(delay); lp.connect(comp);
 }
 const SCALE = [0, 2, 4, 7, 9];
 // ---- Sound: the particles make a song
@@ -1936,13 +1945,19 @@ const SCALE = [0, 2, 4, 7, 9];
 //   cyan    = 808 kick   (a pitched boom)
 //   magenta = wobble bass (dubstep "wub": a growling bass whose filter wobbles in time)
 //   gold    = snare
+//   green   = hi-hat (crisp noise tick)
+//   orange  = chord stab (three detuned saws playing a minor chord)
+//   violet  = synth lead (a plucked square wave that arpeggiates)
 // How fast a particle moves picks its rhythm pattern (sparse → steady → busy), the direction it's heading picks the
 // note (a compass of notes), spin picks the wobble speed, position pans it, and Σ|ψ|² is its volume.
 // In the trap each beat samples an energy level n with probability P(n): a superposition wanders between notes and
 // patterns, and a measured energy plays one steady loop.
 const BPM = 128, STEP = 60 / BPM / 4;
-const INSTR = ['kick', 'bass', 'snare'];
+const INSTR = ['kick', 'bass', 'snare', 'hat', 'stab', 'lead'];
 const PATTERNS = {
+  hat:   [[2, 6, 10, 14], [0, 2, 4, 6, 8, 10, 12, 14], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]],
+  stab:  [[0], [6, 14], [2, 6, 10, 14, 15]],
+  lead:  [[0, 6, 12], [0, 3, 6, 8, 11, 14], [0, 2, 4, 6, 8, 10, 12, 14]],
   kick:  [[0, 8], [0, 4, 8, 12], [0, 3, 6, 8, 10, 11, 14]],
   bass:  [[0], [0, 8], [0, 3, 6, 10, 12, 14]],
   snare: [[8], [4, 12], [4, 12, 13, 14, 15]],
@@ -1981,6 +1996,42 @@ function kick(when, vol, pan = 0, freq = 52) {
   cg.gain.setValueAtTime(vol * 0.12, when); cg.gain.exponentialRampToValueAtTime(0.0001, when + 0.012);
   c.connect(cg); cg.connect(dest); c.start(when); c.stop(when + 0.02);
 }
+function hat(when, vol, pan = 0, open = false) {
+  if (!noiseBuf) snare(when, 0.0001);             // makes sure the noise buffer exists
+  const dest = AC.createStereoPanner ? AC.createStereoPanner() : AC.createGain();
+  if (dest.pan) dest.pan.value = pan;
+  dest.connect(master);
+  const n = AC.createBufferSource(), hp = AC.createBiquadFilter(), g = AC.createGain(), len = open ? 0.25 : 0.05;
+  n.buffer = noiseBuf; hp.type = 'highpass'; hp.frequency.value = 7000;
+  g.gain.setValueAtTime(vol, when); g.gain.exponentialRampToValueAtTime(0.0001, when + len);
+  n.connect(hp); hp.connect(g); g.connect(dest); n.start(when); n.stop(when + len + 0.02);
+}
+function stab(when, vol, pan, root) {             // minor chord: root, minor third, fifth, octave
+  const dest = AC.createStereoPanner ? AC.createStereoPanner() : AC.createGain();
+  if (dest.pan) dest.pan.value = pan;
+  dest.connect(master);
+  const lp = AC.createBiquadFilter(), g = AC.createGain();
+  lp.type = 'lowpass'; lp.Q.value = 3;
+  lp.frequency.setValueAtTime(4000, when); lp.frequency.exponentialRampToValueAtTime(500, when + 0.25);
+  g.gain.setValueAtTime(vol, when); g.gain.exponentialRampToValueAtTime(0.0001, when + 0.32);
+  lp.connect(g); g.connect(dest);
+  for (const semi of [0, 3, 7, 12]) for (const det of [-9, 9]) {
+    const o = AC.createOscillator(); o.type = 'sawtooth';
+    o.frequency.value = root * Math.pow(2, semi / 12); o.detune.value = det;
+    const og = AC.createGain(); og.gain.value = 0.12; o.connect(og); og.connect(lp); o.start(when); o.stop(when + 0.35);
+  }
+}
+function lead(when, vol, pan, freq) {             // plucked square wave
+  const dest = AC.createStereoPanner ? AC.createStereoPanner() : AC.createGain();
+  if (dest.pan) dest.pan.value = pan;
+  dest.connect(master);
+  const o = AC.createOscillator(), lp = AC.createBiquadFilter(), g = AC.createGain();
+  o.type = 'square'; o.frequency.value = freq;
+  lp.type = 'lowpass'; lp.Q.value = 6;
+  lp.frequency.setValueAtTime(freq * 8, when); lp.frequency.exponentialRampToValueAtTime(freq * 1.5, when + 0.18);
+  g.gain.setValueAtTime(vol, when); g.gain.exponentialRampToValueAtTime(0.0001, when + 0.22);
+  o.connect(lp); lp.connect(g); g.connect(dest); o.start(when); o.stop(when + 0.25);
+}
 function wobbleBass(when, vol, pan, freq, dur, wobHz) {
   const dest = AC.createStereoPanner ? AC.createStereoPanner() : AC.createGain();
   if (dest.pan) dest.pan.value = pan * 0.5;
@@ -2015,6 +2066,9 @@ function note(y, vol, dur, oct = 0, tb = -1) {
     o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
   }
   else if (tb === 2) snare(t, vol * 0.9, 0, 160 + 60 * (1 - y / LY) + 40 * oct);
+  else if (tb === 3) hat(t, vol * 0.6, 0, true);
+  else if (tb === 4) stab(t, vol * 0.7, 0, 110 * Math.pow(2, degSemis(idx % 5) / 12));
+  else if (tb === 5) lead(t, vol * 0.6, 0, 440 * Math.pow(2, semi / 12));
   else if (tb === 1) wobbleBass(t, vol * 0.5, 0, 55 * Math.pow(2, semi / 12), 0.35, BPM / 60 * 4);
   else kick(t, vol * 1.3, 0, 45 * Math.pow(2, Math.min(7, semi) / 12));
 }
@@ -2026,7 +2080,7 @@ function headingDegree(p) {
   const ang = Math.atan2(-(Y1 - Y0), X1 - X0);                         // screen angle, up = +
   return ((Math.round(ang / (Math.PI / 4)) % 8) + 8) % 8;
 }
-const seq = [null, null, null];      // per color: next step to schedule, and this beat's choices
+const seq = COLORS.map(() => null);      // per color: next step to schedule, and this beat's choices
 let songT0 = null;
 function beatChoices(p, d) {
   const o = p.obs, speed = Math.sqrt(2 * Math.max(0, o.T));
@@ -2057,12 +2111,19 @@ function updateVoices() {
       if (!pat.includes(s)) continue;
       if (when < t - 0.01) continue;                                    // too late to play this one
       (d.hits || (d.hits = [])).push(when); if (d.hits.length > 24) d.hits.shift();
-      if (i === 2) snare(when, 0.16 * amt, pan, 190);
-      else if (i === 0) kick(when, 0.42 * amt, pan, 45 * Math.pow(2, Math.min(7, degSemis(d.ch.deg)) / 12));
+      const semi = degSemis(d.ch.deg);
+      if (i === 2) snare(when, 0.24 * amt, pan, 190);
+      else if (i === 0) kick(when, 0.6 * amt, pan, 45 * Math.pow(2, Math.min(7, semi) / 12));
+      else if (i === 3) hat(when, (s % 4 === 2 ? 0.13 : 0.08) * amt, pan, d.ch.deg >= 1 && d.ch.deg <= 3 && s % 4 === 2);   // heading upward opens the off-beat hats
+      else if (i === 4) stab(when, 0.16 * amt, pan, 110 * Math.pow(2, semi / 12));
+      else if (i === 5) {
+        const arp = [0, 2, 4, 2][(d.step >> 1) % 4] * (p.obs.L < -0.25 ? -1 : 1);   // spin flips the arpeggio
+        lead(when, 0.16 * amt, pan, 220 * Math.pow(2, degSemis(d.ch.deg + 5 + arp) / 12));
+      }
       else {
         const nextIdx = pat.find(q => q > s), gap = ((nextIdx === undefined ? pat[0] + 16 : nextIdx) - s) * STEP;
         const spin = p.obs.L, wob = BPM / 60 * (spin > 0.25 ? 4 : spin < -0.25 ? 1 : 2);   // 1/16, 1/4 or 1/8 wobbles
-        wobbleBass(when, 0.16 * amt, pan, 55 * Math.pow(2, degSemis(d.ch.deg) / 12), Math.min(gap, 4 * STEP * 2), wob);
+        wobbleBass(when, 0.24 * amt, pan, 55 * Math.pow(2, degSemis(d.ch.deg) / 12), Math.min(gap, 4 * STEP * 2), wob);
       }
     }
   });
@@ -2071,6 +2132,10 @@ function updateVoices() {
 function swoosh(k, tb = 0) {
   if (!AC || !soundOn) return;
   const t = AC.currentTime;
+  if (tb >= 3) {                                   // new colors: a short taste of their own sound
+    if (tb === 3) hat(t, 0.08, 0, true); else if (tb === 4) stab(t, 0.08, 0, 110); else lead(t, 0.07, 0, 330 + 200 * k);
+    return;
+  }
   if (tb === 2 || tb === 0) {                       // a noise sweep: brush for the snare, riser for the kick
     if (tb === 2) snare(t + 0.3, 0.05);
     if (!noiseBuf) snare(t, 0.0001);                // makes sure the noise buffer exists
@@ -2133,7 +2198,7 @@ function unb64url(str) {
   return Uint8Array.from(atob(str), c => c.charCodeAt(0));
 }
 function encodeSetup() {
-  const out = [3, SCENES.indexOf(scene), forces];
+  const out = [4, SCENES.indexOf(scene), forces];
   const varint = v => { while (v >= 128) { out.push((v & 127) | 128); v = Math.floor(v / 128); } out.push(v); };
   const u16 = v => { v = Math.max(0, Math.min(65535, Math.round(v))); out.push(v & 255, v >> 8); };
   // cell codes: 0 empty, 1 wall, 2 tunneling barrier, 3 unchanged from the scene, 4 gate, 5 absorber, 6 amplifier
@@ -2145,7 +2210,7 @@ function encodeSetup() {
   varint(runs.length); for (const [v, l] of runs) { out.push(v); varint(l); }
   const waves = waveLog.slice(-60); varint(waves.length);
   for (const w of waves) {
-    out.push(w.p | ((w.m + 4) << 2));
+    out.push(w.p | ((w.m + 4) << 3));
     u16(w.x / LX * 65535); u16(w.y / LY * 65535); u16(w.kx * 10000 + 32768); u16(w.ky * 10000 + 32768);
     out.push(Math.min(255, Math.round(w.sx * 10)), Math.min(255, Math.round(w.sy * 10)));
   }
@@ -2159,7 +2224,8 @@ function decodeSetup(text) {
   const varint = () => { let v = 0, mul = 1, c; do { c = byte(); v += (c & 127) * mul; mul *= 128; } while (c & 128); return v; };
   const u16 = () => byte() | (byte() << 8);
   const ver = byte();
-  if (ver !== 2 && ver !== 3) throw new Error('This code was made by a different version of the app.');
+  if (ver < 2 || ver > 4) throw new Error('This code was made by a different version of the app.');
+  const pBits = ver >= 4 ? 3 : 2;           // v4 has six colors
   const sceneName = SCENES[byte()]; if (!sceneName) throw new Error('This code names a scene that doesn\'t exist.');
   const f = byte() % 3, walls = new Float64Array(N).fill(NaN), gains = new Float64Array(N);
   const V = [0, WALL_V, 0.9, NaN, GATE_V, 0, 0], G = [0, 0, 0, 0, 0, BRUSH.absorb.G, BRUSH.amp.G];
@@ -2170,7 +2236,7 @@ function decodeSetup(text) {
   const waves = [];
   for (let n = varint(); n > 0; n--) {
     const pm = byte();
-    waves.push({ p: Math.min(2, pm & 3), m: Math.max(-2, Math.min(2, (pm >> 2) - 4)), x: u16() / 65535 * LX, y: u16() / 65535 * LY,
+    waves.push({ p: Math.min(COLORS.length - 1, pm & ((1 << pBits) - 1)), m: Math.max(-2, Math.min(2, (pm >> pBits) - 4)), x: u16() / 65535 * LX, y: u16() / 65535 * LY,
       kx: (u16() - 32768) / 10000, ky: (u16() - 32768) / 10000, sx: Math.max(1, byte() / 10), sy: Math.max(1, byte() / 10) });
   }
   return { scene: sceneName, forces: f, walls, gains, waves };
@@ -2293,7 +2359,7 @@ $('#micBtn').onclick = toggleMic;
 $('#soundBtn').onclick = () => {
   audioInit();
   if (soundOn && humOn) humOn = false; else if (soundOn) soundOn = false; else { soundOn = true; humOn = true; }
-  if (master) master.gain.value = soundOn ? 0.5 : 0; syncButtons();
+  if (master) master.gain.value = soundOn ? MASTER_GAIN : 0; syncButtons();
 };
 $('#pauseBtn').onclick = () => { paused = !paused; tl.rewinding = false; syncButtons(); };
 $('#rewindBtn').onclick = () => {
@@ -2323,7 +2389,7 @@ addEventListener('keydown', e => {
   if (/^(SELECT|INPUT|TEXTAREA)$/.test(e.target.tagName) || e.metaKey || e.ctrlKey) return;
   const k = e.key.toLowerCase();
   if (k === ' ') { e.preventDefault(); audioInit(); observeAll(); }
-  else if (k >= '1' && k <= '3') { current = +k - 1; syncButtons(); }
+  else if (k >= '1' && k <= '6') { if (!(scene === 'level' && k !== '1')) { current = +k - 1; syncButtons(); } }
   else if (k === 'w') setTool('wall'); else if (k === 'e') setTool('erase');
   else if (k === 'q' || k === 'escape') { setTool('play'); document.querySelectorAll('.modal').forEach(m => m.classList.remove('show')); }
   else if (k === 'v') $('#spinBtn').click(); else if (k === 'g') $('#forceBtn').click(); else if (k === 'n') $('#meterBtn').click();
