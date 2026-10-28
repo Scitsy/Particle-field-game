@@ -27,7 +27,7 @@ needs `https://` or `localhost`, e.g. `npx http-server`.)
 | **Time** | **Rewind** runs time backwards, the speed button picks ¼× to 2×, and the slider jumps to any recent moment. Playing forwards from an earlier moment starts a new timeline. |
 | **Challenges** | Six puzzles in the scene menu: get enough of the cloud into the gold ring using throws, bank shots, tunneling, the energy gate, your gaze and amplifiers. |
 | **Share** | Gives a code (or link) that rebuilds your scene, walls and thrown waves. |
-| **Sound** | The particles make a song on one shared beat: cyan is an 808 kick, magenta a wobble bass, gold a snare, green a hi-hat, orange a chord stab, violet a synth lead. Speed picks the rhythm, direction picks the note, spin changes the wobble. The button cycles all sound, effects only, off. |
+| **Sound** | The particles make a song on one shared beat: cyan is an 808 kick, magenta a wobble bass, gold a snare, green a hi-hat, orange a chord stab, violet a synth lead. Speed picks the rhythm, direction picks the note, spin changes the wobble. **−/+** change the tempo (60–200 BPM; tap the BPM for genre presets). The Sound button cycles all sound, effects only, off. |
 | **Mic** | Noise shakes the clouds, and a clap collapses them. |
 
 Press **?** in the app for the full explanation.

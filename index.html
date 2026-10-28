@@ -150,6 +150,9 @@
     <button id="shareBtn" title="Save or share this setup">Share</button>
     <button id="micBtn" title="Let microphone noise disturb the particles (M)">Mic<span class="lvl"></span></button>
     <button id="soundBtn" class="on" title="All sound (effects and the hum of the waves), effects only, or off (S)">Sound: all</button>
+    <button id="tempoDown" title="Slower beat (,)" aria-label="Slower tempo">−</button>
+    <button id="tempoBtn" title="Tempo. Tap to jump between 90, 110, 128, 140 and 174 BPM">128 BPM</button>
+    <button id="tempoUp" title="Faster beat (.)" aria-label="Faster tempo">+</button>
     <button id="helpBtn" title="What is going on? (H)">?</button>
   </div>
 </div>
@@ -205,7 +208,9 @@
     <li><b>Sound</b>: the particles make a song together, all locked to one beat. Cyan is an 808 kick, magenta a dubstep wobble bass,
       gold a snare, green a hi-hat, orange a chord stab and violet a synth lead. <b>Speed</b> picks the rhythm (slow = sparse, fast = busy), <b>direction</b> picks the note (right is the root note;
       turn counterclockwise to climb the scale), <b>spin</b> changes how fast the bass wobbles. In the trap, a particle spread over
-      several energy levels wanders between notes; measure its energy and it settles into one loop.</li> Higher energy means a higher note, the sound pans left and right with the cloud,
+      several energy levels wanders between notes; measure its energy and it settles into one loop.
+      <b>−</b> / <b>+</b> (or <span class="k">,</span> <span class="k">.</span>) change the tempo; tap the BPM to jump between styles
+      (90 hip-hop, 110, 128 techno, 140 dubstep, 174 drum &amp; bass). Shared setups remember the tempo.</li> Higher energy means a higher note, the sound pans left and right with the cloud,
       and a spinning particle wobbles. In the <b>Harmonic trap</b> you hear the energy levels themselves: a particle spread over
       several levels plays a chord, and <b>Measure energy</b> collapses it to one pure note. The button cycles all sound, effects only, off.</li>
     <li><b>Mic</b>: noise shakes the clouds (the environment disturbing them). A loud clap collapses everything.</li>
@@ -250,7 +255,7 @@
       Absorbers and amplifiers are an imaginary potential <code>V − iΓ/2</code>: amplitude changes by <code>e<sup>−Γt/2</sup></code>, decay for Γ &gt; 0,
       gain for Γ &lt; 0. A single particle can't be more than 100% likely, so after gain ψ is scaled back to Σ|ψ|² = 1: the amplified branch
       of the superposition gains weight relative to the others.</li>
-    <li>Sound: a 16-step sequencer at 128 BPM. Rhythm pattern from the speed √(2⟨T⟩); note from the direction of the probability
+    <li>Sound: a 16-step sequencer (128 BPM to start). Rhythm pattern from the speed √(2⟨T⟩); note from the direction of the probability
       current <code>⟨j⟩/Σ|ψ|²</code> (eight compass directions on a minor pentatonic scale); wobble rate from the sign of L<sub>z</sub>;
       pan from the cloud's position; volume from Σ|ψ|². In the trap each beat samples an energy level n with probability P(n).</li>
     <li>Mic noise adds a random, moving potential: a crude model of decoherence (dephasing by the environment).</li>
@@ -259,7 +264,7 @@
   <p><span class="k">Space</span> observe · <span class="k">1</span>–<span class="k">6</span> particle ·
     <span class="k">W</span> walls · <span class="k">E</span> erase · <span class="k">Q</span> play · <span class="k">F</span> fire ·
     <span class="k">P</span> phase · <span class="k">M</span> mic · <span class="k">S</span> sound · <span class="k">K</span> pause ·
-    <span class="k">V</span> spin · <span class="k">G</span> forces · <span class="k">N</span> energy · <span class="k">A</span> auto · <span class="k">R</span> restart level · <span class="k">B</span> rewind · <span class="k">D</span> 3D · <span class="k">[</span><span class="k">]</span> speed ·
+    <span class="k">V</span> spin · <span class="k">G</span> forces · <span class="k">N</span> energy · <span class="k">A</span> auto · <span class="k">R</span> restart level · <span class="k">B</span> rewind · <span class="k">D</span> 3D · <span class="k">,</span><span class="k">.</span> tempo · <span class="k">[</span><span class="k">]</span> speed ·
     <span class="k">C</span> clear · <span class="k">H</span> help</p>
 </div></div>
 
@@ -961,6 +966,7 @@ function setScene(name, restore = null) {
   if (restore) {
     if (restore.walls) for (let k = 0; k < N; k++) if (!Number.isNaN(restore.walls[k])) { Vwall[k] = restore.walls[k]; Gwall[k] = restore.gains[k]; }
     forces = restore.forces; forcesDirty = true;
+    if (restore.tempo) setTempo(restore.tempo);
     for (const w of restore.waves) addWave(particles[w.p], w.x, w.y, w.kx, w.ky, w.sx, w.sy, w.m);
   }
   $('#scene').value = name;
@@ -1952,7 +1958,19 @@ const SCALE = [0, 2, 4, 7, 9];
 // note (a compass of notes), spin picks the wobble speed, position pans it, and Σ|ψ|² is its volume.
 // In the trap each beat samples an energy level n with probability P(n): a superposition wanders between notes and
 // patterns, and a measured energy plays one steady loop.
-const BPM = 128, STEP = 60 / BPM / 4;
+let BPM = 128, STEP = 60 / BPM / 4;
+const TEMPO_MIN = 60, TEMPO_MAX = 200, TEMPO_PRESETS = [90, 110, 128, 140, 174];
+// Change tempo without a stumble: keep the current position in the bar, and let the new step length run from now on.
+function setTempo(v) {
+  v = Math.max(TEMPO_MIN, Math.min(TEMPO_MAX, Math.round(v)));
+  if (v === BPM) return;
+  if (AC && songT0 !== null) {
+    const t = AC.currentTime, pos = (t - songT0) / STEP;     // where we are, in steps
+    STEP = 60 / v / 4; songT0 = t - pos * STEP;
+  } else STEP = 60 / v / 4;
+  BPM = v;
+  $('#tempoBtn').textContent = BPM + ' BPM';
+}
 const INSTR = ['kick', 'bass', 'snare', 'hat', 'stab', 'lead'];
 const PATTERNS = {
   hat:   [[2, 6, 10, 14], [0, 2, 4, 6, 8, 10, 12, 14], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]],
@@ -2098,11 +2116,12 @@ function updateVoices() {
   if (!AC) return;
   const t = AC.currentTime;
   if (songT0 === null) songT0 = t;
-  const horizon = Math.floor((t + 0.35 - songT0) / STEP);
+  const horizon = Math.floor((t + 0.35 - songT0) / STEP), nowStep = Math.ceil((t - songT0) / STEP);
   particles.forEach((p, i) => {
     const live = humOn && soundOn && !paused && p.active && p.obs && scene !== 'pair' && scene !== 'slit';
     if (!live) { seq[i] = null; return; }
-    const d = seq[i] || (seq[i] = { step: Math.ceil((t - songT0) / STEP), nref: null, ch: null });
+    const d = seq[i] || (seq[i] = { step: nowStep, nref: null, ch: null });
+    if (d.step > horizon + 1) d.step = nowStep;                 // the tempo just slowed down: re-sync
     const [X] = toScreen(p.mx, p.my), pan = Math.max(-1, Math.min(1, (X / W) * 2 - 1)) * 0.8, amt = Math.min(1, p.norm);
     for (; d.step < horizon; d.step++) {
       const s = d.step % 16, when = songT0 + d.step * STEP;
@@ -2198,7 +2217,7 @@ function unb64url(str) {
   return Uint8Array.from(atob(str), c => c.charCodeAt(0));
 }
 function encodeSetup() {
-  const out = [4, SCENES.indexOf(scene), forces];
+  const out = [5, SCENES.indexOf(scene), forces, BPM - TEMPO_MIN];
   const varint = v => { while (v >= 128) { out.push((v & 127) | 128); v = Math.floor(v / 128); } out.push(v); };
   const u16 = v => { v = Math.max(0, Math.min(65535, Math.round(v))); out.push(v & 255, v >> 8); };
   // cell codes: 0 empty, 1 wall, 2 tunneling barrier, 3 unchanged from the scene, 4 gate, 5 absorber, 6 amplifier
@@ -2224,10 +2243,11 @@ function decodeSetup(text) {
   const varint = () => { let v = 0, mul = 1, c; do { c = byte(); v += (c & 127) * mul; mul *= 128; } while (c & 128); return v; };
   const u16 = () => byte() | (byte() << 8);
   const ver = byte();
-  if (ver < 2 || ver > 4) throw new Error('This code was made by a different version of the app.');
+  if (ver < 2 || ver > 5) throw new Error('This code was made by a different version of the app.');
   const pBits = ver >= 4 ? 3 : 2;           // v4 has six colors
   const sceneName = SCENES[byte()]; if (!sceneName) throw new Error('This code names a scene that doesn\'t exist.');
-  const f = byte() % 3, walls = new Float64Array(N).fill(NaN), gains = new Float64Array(N);
+  const f = byte() % 3, tempo = ver >= 5 ? byte() + TEMPO_MIN : null;
+  const walls = new Float64Array(N).fill(NaN), gains = new Float64Array(N);
   const V = [0, WALL_V, 0.9, NaN, GATE_V, 0, 0], G = [0, 0, 0, 0, 0, BRUSH.absorb.G, BRUSH.amp.G];
   for (let r = varint(), k = 0; r > 0; r--) {
     const v = byte(), l = varint(), a = Math.min(N, k), b = Math.min(N, k + l);
@@ -2239,7 +2259,7 @@ function decodeSetup(text) {
     waves.push({ p: Math.min(COLORS.length - 1, pm & ((1 << pBits) - 1)), m: Math.max(-2, Math.min(2, (pm >> pBits) - 4)), x: u16() / 65535 * LX, y: u16() / 65535 * LY,
       kx: (u16() - 32768) / 10000, ky: (u16() - 32768) / 10000, sx: Math.max(1, byte() / 10), sy: Math.max(1, byte() / 10) });
   }
-  return { scene: sceneName, forces: f, walls, gains, waves };
+  return { scene: sceneName, forces: f, tempo, walls, gains, waves };
 }
 function openShare() {
   const code = encodeSetup();
@@ -2356,6 +2376,9 @@ $('#emitBtn').onclick = () => { audioInit(); marks.length = 0; emitPair(); };
 $('#collideBtn').onclick = () => { audioInit(); marks.length = 0; collidePair(); };
 $('#micBtn').onclick = toggleMic;
 // Sound: all (effects + the waves' hum) → effects only → off
+$('#tempoDown').onclick = () => setTempo(BPM - 2);
+$('#tempoUp').onclick = () => setTempo(BPM + 2);
+$('#tempoBtn').onclick = () => setTempo(TEMPO_PRESETS.find(v => v > BPM) || TEMPO_PRESETS[0]);
 $('#soundBtn').onclick = () => {
   audioInit();
   if (soundOn && humOn) humOn = false; else if (soundOn) soundOn = false; else { soundOn = true; humOn = true; }
@@ -2396,6 +2419,7 @@ addEventListener('keydown', e => {
   else if (k === 'a') $('#repeatBtn').click();
   else if (k === 'r') $('#restartBtn').click();
   else if (k === 'b') $('#rewindBtn').click();
+  else if (k === ',') setTempo(BPM - 2); else if (k === '.') setTempo(BPM + 2);
   else if (k === 'd') $('#view3dBtn').click();
   else if (k === '[') { speedIdx = Math.max(0, speedIdx - 1); syncButtons(); }
   else if (k === ']') { speedIdx = Math.min(SPEEDS.length - 1, speedIdx + 1); syncButtons(); }
